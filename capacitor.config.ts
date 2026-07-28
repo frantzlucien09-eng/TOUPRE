@@ -1,0 +1,33 @@
+import type { CapacitorConfig } from '@capacitor/cli';
+
+const config: CapacitorConfig = {
+  appId: 'com.toupre.customer',
+  appName: 'TOUPRE',
+  webDir: 'dist',
+  bundledWebRuntime: false,
+  server: {
+    androidScheme: 'https',
+    iosScheme: 'capacitor',
+  },
+  ios: {
+    contentInset: 'always',
+    backgroundColor: '#ffffff',
+    scrollEnabled: false,
+  },
+  android: {
+    backgroundColor: '#ffffff',
+    allowMixedContent: false,
+  },
+  plugins: {
+    SplashScreen: {
+      launchShowDuration: 1000,
+      backgroundColor: '#ffffff',
+      androidScaleType: 'CENTER_CROP',
+      showSpinner: false,
+      splashFullScreen: true,
+      splashImmersive: false,
+    },
+  },
+};
+
+export default config;
