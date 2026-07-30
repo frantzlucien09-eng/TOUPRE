@@ -3,8 +3,9 @@ import { useAuth } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
 import { clearCart, fetchCartItems, groupCartByVendor, type CartItemWithProduct } from '@/lib/cart';
 import { placeOrder } from '@/lib/placeOrder';
+import { listAddresses, type SavedAddress } from '@/lib/addresses';
 import { formatHTG } from '@/lib/format';
-import { ArrowLeft, Loader2, MapPin, Truck } from 'lucide-react';
+import { ArrowLeft, Loader2, MapPin, Truck, Check } from 'lucide-react';
 
 type Props = {
   onBack: () => void;
@@ -18,6 +19,8 @@ export function CustomerCheckoutPage({ onBack, onSuccess }: Props) {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
+  const [savedAddresses, setSavedAddresses] = useState<SavedAddress[]>([]);
+  const [selectedAddressId, setSelectedAddressId] = useState<string | null>(null);
   const [phone, setPhone] = useState(customer?.phone ?? '');
   const [address, setAddress] = useState(customer?.address ?? '');
   const [city, setCity] = useState(customer?.city ?? '');
@@ -30,7 +33,31 @@ export function CustomerCheckoutPage({ onBack, onSuccess }: Props) {
       .then((data) => setItems(data.filter((i) => i.product && !i.product.price_on_request)))
       .catch((err) => toast(err instanceof Error ? err.message : 'Erè', 'error'))
       .finally(() => setLoading(false));
-  }, [user, toast]);
+
+    listAddresses(user.id)
+      .then((addrs) => {
+        setSavedAddresses(addrs);
+        const def = addrs.find((a) => a.is_default) ?? addrs[0];
+        if (def) {
+          setSelectedAddressId(def.id);
+          setPhone(def.phone || customer?.phone || '');
+          setAddress(def.address || '');
+          setCity(def.city || '');
+          setDepartment(def.department || '');
+        }
+      })
+      .catch(() => {
+        // addresses table may not be migrated yet
+      });
+  }, [user, toast, customer?.phone]);
+
+  const applyAddress = (addr: SavedAddress) => {
+    setSelectedAddressId(addr.id);
+    setPhone(addr.phone || customer?.phone || '');
+    setAddress(addr.address || '');
+    setCity(addr.city || '');
+    setDepartment(addr.department || '');
+  };
 
   const subtotal = useMemo(
     () => items.reduce((s, it) => s + Number(it.product?.price ?? 0) * it.quantity, 0),
@@ -59,8 +86,11 @@ export function CustomerCheckoutPage({ onBack, onSuccess }: Props) {
           return {
             product_id: it.product_id,
             product_name: it.product!.name,
+            name: it.product!.name,
             quantity: it.quantity,
+            qty: it.quantity,
             unit_price: unit,
+            price: unit,
             subtotal: unit * it.quantity,
           };
         });
@@ -79,6 +109,7 @@ export function CustomerCheckoutPage({ onBack, onSuccess }: Props) {
             city: city.trim() || null,
             department: department.trim() || null,
             full_name: customer?.full_name ?? null,
+            address_id: selectedAddressId,
           },
           notes: notes.trim() || null,
           paymentStatus: 'unpaid',
@@ -137,6 +168,34 @@ export function CustomerCheckoutPage({ onBack, onSuccess }: Props) {
             </div>
           </div>
 
+          {deliveryType === 'delivery' && savedAddresses.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-100 p-4 space-y-2">
+              <p className="text-xs font-semibold text-slate-500">Adrès anrejistre</p>
+              {savedAddresses.map((addr) => (
+                <button
+                  key={addr.id}
+                  type="button"
+                  onClick={() => applyAddress(addr)}
+                  className={`w-full text-left rounded-xl border p-3 transition ${
+                    selectedAddressId === addr.id
+                      ? 'border-emerald-300 bg-emerald-50'
+                      : 'border-slate-100 bg-white'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-slate-900">
+                      {addr.label || 'Adrès'}{addr.is_default ? ' · Defo' : ''}
+                    </p>
+                    {selectedAddressId === addr.id && <Check size={16} className="text-emerald-600" />}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {[addr.address, addr.city, addr.department].filter(Boolean).join(', ')}
+                  </p>
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="bg-white rounded-xl border border-slate-100 p-4 space-y-3">
             <p className="text-xs font-semibold text-slate-500">Adrès / Kontak</p>
             <input
@@ -149,20 +208,20 @@ export function CustomerCheckoutPage({ onBack, onSuccess }: Props) {
               <>
                 <input
                   value={address}
-                  onChange={(e) => setAddress(e.target.value)}
+                  onChange={(e) => { setAddress(e.target.value); setSelectedAddressId(null); }}
                   placeholder="Adrès livrezon"
                   className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
                 <div className="grid grid-cols-2 gap-2">
                   <input
                     value={city}
-                    onChange={(e) => setCity(e.target.value)}
+                    onChange={(e) => { setCity(e.target.value); setSelectedAddressId(null); }}
                     placeholder="Vil"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
                   <input
                     value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
+                    onChange={(e) => { setDepartment(e.target.value); setSelectedAddressId(null); }}
                     placeholder="Depatman"
                     className="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                   />
@@ -204,7 +263,7 @@ export function CustomerCheckoutPage({ onBack, onSuccess }: Props) {
           <button
             type="button"
             disabled={submitting}
-            onClick={submit}
+            onClick={() => void submit()}
             className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-60"
           >
             {submitting ? <Loader2 size={18} className="animate-spin" /> : null}

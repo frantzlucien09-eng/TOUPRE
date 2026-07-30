@@ -129,6 +129,25 @@ export type OrderItem = {
   name: string;
   qty: number;
   price: number;
+  /** Alternate keys written by place_order jsonb */
+  product_name?: string;
+  quantity?: number;
+  unit_price?: number;
+  subtotal?: number;
+};
+
+export type SavedAddress = {
+  id: string;
+  user_id: string;
+  label: string | null;
+  full_name: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  department: string | null;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Order = {

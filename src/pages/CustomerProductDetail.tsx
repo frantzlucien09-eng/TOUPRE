@@ -4,6 +4,8 @@ import { useAuth } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
 import { addToCart } from '@/lib/cart';
 import { isFavorite, toggleFavorite } from '@/lib/favorites';
+import { isFavoriteVendor, toggleFavoriteVendor } from '@/lib/vendorFavorites';
+import { recordProductView } from '@/lib/recentViews';
 import { formatHTG } from '@/lib/format';
 import { CATEGORY_ICON, CATEGORY_LABEL, isAdCategory } from '@/lib/categories';
 import type { Product, Vendor } from '@/lib/types';
@@ -26,6 +28,8 @@ export function CustomerProductDetail({ productId, onBack, onAddedToCart, onMess
   const [photoIdx, setPhotoIdx] = useState(0);
   const [favorited, setFavorited] = useState(false);
   const [favBusy, setFavBusy] = useState(false);
+  const [vendorFav, setVendorFav] = useState(false);
+  const [vendorFavBusy, setVendorFavBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -47,11 +51,17 @@ export function CustomerProductDetail({ productId, onBack, onAddedToCart, onMess
       setVendor(row.vendor ?? null);
       setPhotoIdx(row.cover_index ?? 0);
       setLoading(false);
-      void supabase.rpc('increment_product_view', { p_product_id: productId });
+      if (user?.id) {
+        void recordProductView(user.id, productId).catch(() => {
+          void supabase.rpc('increment_product_view', { p_product_id: productId });
+        });
+      } else {
+        void supabase.rpc('increment_product_view', { p_product_id: productId });
+      }
     };
     load();
     return () => { cancelled = true; };
-  }, [productId, toast]);
+  }, [productId, toast, user?.id]);
 
   useEffect(() => {
     if (!user?.id || !productId) {
@@ -60,6 +70,14 @@ export function CustomerProductDetail({ productId, onBack, onAddedToCart, onMess
     }
     void isFavorite(user.id, productId).then(setFavorited).catch(() => setFavorited(false));
   }, [user?.id, productId]);
+
+  useEffect(() => {
+    if (!user?.id || !vendor?.id) {
+      setVendorFav(false);
+      return;
+    }
+    void isFavoriteVendor(user.id, vendor.id).then(setVendorFav).catch(() => setVendorFav(false));
+  }, [user?.id, vendor?.id]);
 
   const handleAdd = async () => {
     if (!user || !product) return;
@@ -98,6 +116,20 @@ export function CustomerProductDetail({ productId, onBack, onAddedToCart, onMess
       toast(err instanceof Error ? err.message : 'Erè favori', 'error');
     } finally {
       setFavBusy(false);
+    }
+  };
+
+  const handleVendorFavorite = async () => {
+    if (!user || !vendor) return;
+    setVendorFavBusy(true);
+    try {
+      const next = await toggleFavoriteVendor(user.id, vendor.id);
+      setVendorFav(next);
+      toast(next ? 'Vandè ajoute nan favori' : 'Vandè retire nan favori');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erè favori vandè', 'error');
+    } finally {
+      setVendorFavBusy(false);
     }
   };
 
@@ -192,6 +224,17 @@ export function CustomerProductDetail({ productId, onBack, onAddedToCart, onMess
                 <p className="text-xs text-slate-500">{[vendor.city, vendor.department].filter(Boolean).join(', ')}</p>
               )}
             </div>
+            {user && (
+              <button
+                type="button"
+                disabled={vendorFavBusy}
+                onClick={() => void handleVendorFavorite()}
+                className="w-9 h-9 rounded-full bg-slate-50 flex items-center justify-center text-slate-500 disabled:opacity-50"
+                aria-label={vendorFav ? 'Retire vandè nan favori' : 'Ajoute vandè nan favori'}
+              >
+                <Heart size={16} className={vendorFav ? 'fill-rose-500 text-rose-500' : ''} />
+              </button>
+            )}
           </div>
         )}
 

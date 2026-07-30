@@ -10,16 +10,19 @@ import { CustomerCartPage } from '@/pages/CustomerCartPage';
 import { CustomerCheckoutPage } from '@/pages/CustomerCheckoutPage';
 import { CustomerOrderDetail } from '@/pages/CustomerOrderDetail';
 import { CustomerMessagesPage } from '@/pages/CustomerMessagesPage';
+import { CustomerAddressesPanel } from '@/pages/CustomerAddressesPanel';
 import { getCartCount } from '@/lib/cart';
 import { listFavoriteProducts, toggleFavorite } from '@/lib/favorites';
+import { listRecentProducts } from '@/lib/recentViews';
+import { listFavoriteVendors, toggleFavoriteVendor } from '@/lib/vendorFavorites';
 import { CATEGORIES, CATEGORY_ICON, CATEGORY_LABEL } from '@/lib/categories';
 import {
   Package, MapPin, Phone, Loader2, LogOut, Store, MessageCircle, Bell,
-  ExternalLink, Instagram, Music2, Facebook, Globe, ShoppingCart, Search, Heart, User,
+  ExternalLink, Instagram, Music2, Facebook, Globe, ShoppingCart, Search, Heart, User, SlidersHorizontal,
 } from 'lucide-react';
 import type { Order, Product, Vendor as VendorType, SocialPlatform, Notification, ProductCategory, Customer } from '@/lib/types';
 import { formatHTG } from '@/lib/format';
-import { STATUS_LABELS_CUSTOMER, STATUS_STYLES } from '@/lib/orderStatus';
+import { STATUS_LABELS_CUSTOMER, STATUS_STYLES, DONE_STATUSES, ACTIVE_STATUSES, NEW_STATUSES } from '@/lib/orderStatus';
 
 const SOCIAL_ICONS: Record<string, { icon: typeof Globe; bg: string }> = {
   instagram: { icon: Instagram, bg: 'bg-gradient-to-br from-amber-400 via-pink-500 to-purple-600' },
@@ -38,8 +41,11 @@ export function CustomerHome() {
   const [orders, setOrders] = useState<(Order & { vendor?: Pick<VendorType, 'business_name'> | null })[]>([]);
   const [socials, setSocials] = useState<SocialPlatform[]>([]);
   const [wishlist, setWishlist] = useState<Product[]>([]);
+  const [recentProducts, setRecentProducts] = useState<Product[]>([]);
+  const [favVendors, setFavVendors] = useState<VendorType[]>([]);
   const [loading, setLoading] = useState(true);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
   const [tab, setTab] = useState<Tab>('home');
   const [screen, setScreen] = useState<Screen>('main');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
@@ -47,6 +53,10 @@ export function CustomerHome() {
   const [cartCount, setCartCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<ProductCategory | null>(null);
+  const [priceMin, setPriceMin] = useState('');
+  const [priceMax, setPriceMax] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [orderFilter, setOrderFilter] = useState<'all' | 'active' | 'history'>('all');
   const [msgVendorId, setMsgVendorId] = useState<string | null>(null);
   const [msgProductId, setMsgProductId] = useState<string | null>(null);
   const [profileDraft, setProfileDraft] = useState({
@@ -100,7 +110,40 @@ export function CustomerHome() {
     }
   }, [user]);
 
-  const loadProducts = useCallback(async (q: string, cat: ProductCategory | null) => {
+  const reloadRecent = useCallback(async () => {
+    if (!user) return;
+    try {
+      setRecentProducts(await listRecentProducts(user.id, 8));
+    } catch {
+      setRecentProducts([]);
+    }
+  }, [user]);
+
+  const reloadFavVendors = useCallback(async () => {
+    if (!user) return;
+    try {
+      setFavVendors(await listFavoriteVendors(user.id));
+    } catch {
+      setFavVendors([]);
+    }
+  }, [user]);
+
+  const refreshUnreadNotifs = useCallback(async () => {
+    if (!user) return;
+    const { count } = await supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('read', false);
+    setUnreadNotifs(count ?? 0);
+  }, [user]);
+
+  const loadProducts = useCallback(async (
+    q: string,
+    cat: ProductCategory | null,
+    minPrice: string,
+    maxPrice: string,
+  ) => {
     let query = supabase
       .from('products')
       .select('*')
@@ -110,6 +153,10 @@ export function CustomerHome() {
 
     if (cat) query = query.eq('category', cat);
     if (q.trim()) query = query.ilike('name', `%${q.trim()}%`);
+    const min = Number(minPrice);
+    const max = Number(maxPrice);
+    if (minPrice.trim() && !Number.isNaN(min)) query = query.gte('price', min);
+    if (maxPrice.trim() && !Number.isNaN(max)) query = query.lte('price', max);
 
     const { data: prods } = await query;
     setProducts((prods as Product[]) ?? []);
@@ -124,10 +171,13 @@ export function CustomerHome() {
   useEffect(() => {
     if (!user) return;
     const load = async () => {
-      await loadProducts('', null);
+      await loadProducts('', null, '', '');
       await reloadOrders();
       await refreshCartCount();
       await reloadWishlist();
+      await reloadRecent();
+      await reloadFavVendors();
+      await refreshUnreadNotifs();
       setLoading(false);
     };
     void load();
@@ -145,16 +195,25 @@ export function CustomerHome() {
       .channel('customer-social-platforms')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'social_platforms' }, () => { void loadSocials(); })
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
-  }, [user, loadProducts, reloadOrders, refreshCartCount, reloadWishlist]);
+    const notifChannel = supabase
+      .channel('customer-notif-badge')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${user.id}` }, () => {
+        void refreshUnreadNotifs();
+      })
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+      void supabase.removeChannel(notifChannel);
+    };
+  }, [user, loadProducts, reloadOrders, refreshCartCount, reloadWishlist, reloadRecent, reloadFavVendors, refreshUnreadNotifs]);
 
   useEffect(() => {
     if (!user || loading) return;
     const t = window.setTimeout(() => {
-      void loadProducts(searchQuery, categoryFilter);
+      void loadProducts(searchQuery, categoryFilter, priceMin, priceMax);
     }, 250);
     return () => window.clearTimeout(t);
-  }, [searchQuery, categoryFilter, user, loading, loadProducts]);
+  }, [searchQuery, categoryFilter, priceMin, priceMax, user, loading, loadProducts]);
 
   const openProduct = (id: string) => {
     setSelectedProductId(id);
@@ -216,10 +275,13 @@ export function CustomerHome() {
   };
 
   const filteredLabel = useMemo(() => {
-    if (categoryFilter) return CATEGORY_LABEL[categoryFilter];
-    if (searchQuery.trim()) return `Rezilta pou “${searchQuery.trim()}”`;
-    return 'Pwodwi disponib';
-  }, [categoryFilter, searchQuery]);
+    const bits: string[] = [];
+    if (categoryFilter) bits.push(CATEGORY_LABEL[categoryFilter]);
+    if (searchQuery.trim()) bits.push(`“${searchQuery.trim()}”`);
+    if (priceMin || priceMax) bits.push('filtè pri');
+    if (bits.length === 0) return 'Pwodwi disponib';
+    return `Rezilta: ${bits.join(' · ')}`;
+  }, [categoryFilter, searchQuery, priceMin, priceMax]);
 
   if (loading) {
     return (
@@ -235,7 +297,7 @@ export function CustomerHome() {
       <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative">
         <CustomerProductDetail
           productId={selectedProductId}
-          onBack={() => { setScreen('main'); setSelectedProductId(null); }}
+          onBack={() => { setScreen('main'); setSelectedProductId(null); void reloadRecent(); void reloadFavVendors(); }}
           onAddedToCart={() => { void refreshCartCount(); }}
           onMessageVendor={(vendorId, productId) => openMessageVendor(vendorId, productId)}
         />
@@ -277,6 +339,10 @@ export function CustomerHome() {
           orderId={selectedOrderId}
           onBack={() => { setScreen('main'); setSelectedOrderId(null); void reloadOrders(); }}
           onMessageVendor={(vendorId) => openMessageVendor(vendorId)}
+          onReordered={() => {
+            void refreshCartCount();
+            setScreen('cart');
+          }}
         />
       </div>
     );
@@ -287,7 +353,7 @@ export function CustomerHome() {
       <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative pb-6">
         <div className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-100 px-4 py-3 flex items-center gap-3">
           <button
-            onClick={() => setScreen('main')}
+            onClick={() => { setScreen('main'); void reloadFavVendors(); }}
             className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center active:scale-90 transition"
             aria-label="Retounen"
           >
@@ -295,28 +361,76 @@ export function CustomerHome() {
           </button>
           <h1 className="font-bold text-slate-900 text-base flex-1">Favori mwen</h1>
         </div>
-        <div className="px-4 py-4">
-          {wishlist.length === 0 ? (
-            <div className="text-center py-12 text-sm text-slate-400">
-              Pa gen favori ankò. Tape kè a sou yon pwodwi.
-            </div>
-          ) : (
-            <div className="grid grid-cols-2 gap-3">
-              {wishlist.map((p) => (
-                <div key={p.id} className="relative">
-                  <ProductCard product={p} onClick={() => openProduct(p.id)} />
-                  <button
-                    type="button"
-                    onClick={() => void removeFromWishlist(p.id)}
-                    className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/90 border border-slate-100 flex items-center justify-center text-rose-500 shadow-sm"
-                    aria-label="Retire"
-                  >
-                    <Heart size={14} className="fill-rose-500" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
+        <div className="px-4 py-4 space-y-6">
+          <div>
+            <h2 className="font-bold text-slate-900 text-sm mb-2">Pwodwi</h2>
+            {wishlist.length === 0 ? (
+              <div className="text-center py-8 text-sm text-slate-400">
+                Pa gen pwodwi favori ankò.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                {wishlist.map((p) => (
+                  <div key={p.id} className="relative">
+                    <ProductCard product={p} onClick={() => openProduct(p.id)} />
+                    <button
+                      type="button"
+                      onClick={() => void removeFromWishlist(p.id)}
+                      className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/90 border border-slate-100 flex items-center justify-center text-rose-500 shadow-sm"
+                      aria-label="Retire"
+                    >
+                      <Heart size={14} className="fill-rose-500" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <h2 className="font-bold text-slate-900 text-sm mb-2">Vandè favori</h2>
+            {favVendors.length === 0 ? (
+              <div className="text-center py-6 text-sm text-slate-400">
+                Pa gen vandè favori ankò.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {favVendors.map((v) => (
+                  <div key={v.id} className="flex items-center gap-3 bg-white rounded-xl p-3 border border-slate-100">
+                    <div className="w-10 h-10 rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center overflow-hidden">
+                      {v.avatar_url || v.logo_url ? (
+                        <img src={v.avatar_url || v.logo_url || ''} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <Store size={18} />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-slate-900 text-sm truncate">{v.business_name}</p>
+                      <p className="text-[11px] text-slate-400 truncate">{[v.city, v.department].filter(Boolean).join(', ') || 'Vandè TOUPRE'}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (!user) return;
+                        await toggleFavoriteVendor(user.id, v.id);
+                        await reloadFavVendors();
+                      }}
+                      className="w-8 h-8 rounded-full bg-rose-50 flex items-center justify-center text-rose-500"
+                      aria-label="Retire"
+                    >
+                      <Heart size={14} className="fill-rose-500" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openMessageVendor(v.id)}
+                      className="text-xs font-semibold text-emerald-700"
+                    >
+                      Mesaj
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -356,8 +470,13 @@ export function CustomerHome() {
               </span>
             )}
           </button>
-          <button onClick={() => setNotifOpen(true)} className="relative w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 active:scale-90 transition">
+          <button onClick={() => { setNotifOpen(true); void refreshUnreadNotifs(); }} className="relative w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 active:scale-90 transition">
             <Bell size={18} />
+            {unreadNotifs > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-emerald-600 text-white text-[10px] font-bold flex items-center justify-center">
+                {unreadNotifs > 9 ? '9+' : unreadNotifs}
+              </span>
+            )}
           </button>
         </div>
       </header>
@@ -369,15 +488,53 @@ export function CustomerHome() {
             <p className="text-sm text-slate-500 mt-1">Mache TOUPRE — chache pwodwi, pase kòmand, swiv livrezon.</p>
           </div>
 
-          <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Chache yon pwodwi..."
-              className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
-            />
+          <div className="relative flex gap-2">
+            <div className="relative flex-1">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Chache yon pwodwi..."
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowFilters((v) => !v)}
+              className={`w-11 h-11 rounded-xl border flex items-center justify-center ${showFilters || priceMin || priceMax ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : 'bg-white border-slate-200 text-slate-500'}`}
+              aria-label="Filtè"
+            >
+              <SlidersHorizontal size={16} />
+            </button>
           </div>
+
+          {showFilters && (
+            <div className="grid grid-cols-2 gap-2 bg-white border border-slate-100 rounded-xl p-3">
+              <input
+                value={priceMin}
+                onChange={(e) => setPriceMin(e.target.value.replace(/[^\d.]/g, ''))}
+                placeholder="Pri min (HTG)"
+                inputMode="decimal"
+                className="px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              <input
+                value={priceMax}
+                onChange={(e) => setPriceMax(e.target.value.replace(/[^\d.]/g, ''))}
+                placeholder="Pri max (HTG)"
+                inputMode="decimal"
+                className="px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+              {(priceMin || priceMax) && (
+                <button
+                  type="button"
+                  onClick={() => { setPriceMin(''); setPriceMax(''); }}
+                  className="col-span-2 text-xs font-semibold text-slate-500 py-1"
+                >
+                  Efase filtè pri
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
             <button
@@ -439,6 +596,42 @@ export function CustomerHome() {
             )}
           </div>
 
+          {recentProducts.length > 0 && !searchQuery && !categoryFilter && (
+            <div>
+              <h2 className="font-bold text-slate-900 text-sm mb-2">Ou te gade dènyèman</h2>
+              <div className="grid grid-cols-2 gap-3">
+                {recentProducts.map((p) => (
+                  <ProductCard key={`recent-${p.id}`} product={p} onClick={() => openProduct(p.id)} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {favVendors.length > 0 && !searchQuery && (
+            <div>
+              <h2 className="font-bold text-slate-900 text-sm mb-2">Vandè favori</h2>
+              <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+                {favVendors.map((v) => (
+                  <button
+                    key={v.id}
+                    type="button"
+                    onClick={() => openMessageVendor(v.id)}
+                    className="shrink-0 w-28 rounded-xl bg-white border border-slate-100 p-3 text-center active:scale-95 transition"
+                  >
+                    <div className="w-10 h-10 mx-auto rounded-full bg-emerald-50 text-emerald-700 flex items-center justify-center overflow-hidden mb-2">
+                      {v.avatar_url || v.logo_url ? (
+                        <img src={v.avatar_url || v.logo_url || ''} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <Store size={16} />
+                      )}
+                    </div>
+                    <p className="text-[11px] font-semibold text-slate-800 truncate">{v.business_name}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           {socials.length > 0 && (
             <div>
               <h2 className="font-bold text-slate-900 text-sm mb-2">Swiv nou</h2>
@@ -472,12 +665,50 @@ export function CustomerHome() {
       {tab === 'orders' && (
         <div className="px-4 py-4 space-y-3">
           <h2 className="font-bold text-slate-900 text-lg mb-1">Kòmand mwen yo</h2>
-          {orders.length === 0 ? (
+          <div className="flex gap-2">
+            {([
+              { key: 'all' as const, label: 'Tout' },
+              { key: 'active' as const, label: 'Aktif' },
+              { key: 'history' as const, label: 'Istwa' },
+            ]).map((f) => (
+              <button
+                key={f.key}
+                type="button"
+                onClick={() => setOrderFilter(f.key)}
+                className={`px-3 py-1.5 rounded-full text-xs font-semibold border ${
+                  orderFilter === f.key
+                    ? 'bg-emerald-600 text-white border-emerald-600'
+                    : 'bg-white text-slate-600 border-slate-100'
+                }`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {orders.filter((o) => {
+            if (orderFilter === 'active') {
+              return NEW_STATUSES.includes(o.status) || ACTIVE_STATUSES.includes(o.status);
+            }
+            if (orderFilter === 'history') {
+              return DONE_STATUSES.includes(o.status);
+            }
+            return true;
+          }).length === 0 ? (
             <div className="text-center py-12 text-sm text-slate-400">
               Ou pa gen kòmand ankò.
             </div>
           ) : (
-            orders.map((o) => {
+            orders
+              .filter((o) => {
+                if (orderFilter === 'active') {
+                  return NEW_STATUSES.includes(o.status) || ACTIVE_STATUSES.includes(o.status);
+                }
+                if (orderFilter === 'history') {
+                  return DONE_STATUSES.includes(o.status);
+                }
+                return true;
+              })
+              .map((o) => {
               const statusLabel = STATUS_LABELS_CUSTOMER[o.status] ?? o.status;
               const statusColor = STATUS_STYLES[o.status] ?? 'bg-slate-100 text-slate-600';
               return (
@@ -576,6 +807,8 @@ export function CustomerHome() {
             </button>
           </div>
 
+          <CustomerAddressesPanel />
+
           {!profileDraft.phone && (
             <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
               <p className="text-xs text-amber-700">Ajoute nimewo telefòn ou pou w ka resevwa apèl vandè yo.</p>
@@ -618,10 +851,13 @@ export function CustomerHome() {
         <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={() => setNotifOpen(false)}>
           <div className="w-full max-w-sm bg-white h-full overflow-y-auto p-4" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-slate-900">Notifikasyon</h3>
+              <h3 className="font-bold text-slate-900">Sant Notifikasyon</h3>
               <button onClick={() => setNotifOpen(false)} className="text-slate-400 text-sm">Fèmen</button>
             </div>
-            <CustomerNotifications userId={user!.id} />
+            <CustomerNotifications
+              userId={user!.id}
+              onChanged={() => { void refreshUnreadNotifs(); }}
+            />
           </div>
         </div>
       )}
@@ -629,9 +865,10 @@ export function CustomerHome() {
   );
 }
 
-function CustomerNotifications({ userId }: { userId: string }) {
+function CustomerNotifications({ userId, onChanged }: { userId: string; onChanged?: () => void }) {
   const [notifs, setNotifs] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
+  const [typeFilter, setTypeFilter] = useState<'all' | 'order' | 'other'>('all');
 
   const load = useCallback(async () => {
     const { data } = await supabase
@@ -639,7 +876,7 @@ function CustomerNotifications({ userId }: { userId: string }) {
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
-      .limit(30);
+      .limit(40);
     setNotifs((data ?? []) as Notification[]);
     setLoading(false);
   }, [userId]);
@@ -659,6 +896,7 @@ function CustomerNotifications({ userId }: { userId: string }) {
       .update({ read: true, is_read: true, read_at: new Date().toISOString() })
       .eq('id', id);
     setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+    onChanged?.();
   };
 
   const markAllRead = async () => {
@@ -668,15 +906,39 @@ function CustomerNotifications({ userId }: { userId: string }) {
       .eq('user_id', userId)
       .eq('read', false);
     setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
+    onChanged?.();
   };
 
   if (loading) return <div className="text-center py-8"><Loader2 className="animate-spin text-slate-300 mx-auto" size={20} /></div>;
   if (notifs.length === 0) return <p className="text-sm text-slate-400 text-center py-8">Pa gen notifikasyon.</p>;
 
   const unread = notifs.some((n) => !n.read);
+  const filtered = notifs.filter((n) => {
+    if (typeFilter === 'order') return n.type === 'order';
+    if (typeFilter === 'other') return n.type !== 'order';
+    return true;
+  });
 
   return (
     <div className="space-y-2">
+      <div className="flex gap-2 mb-2">
+        {([
+          { key: 'all' as const, label: 'Tout' },
+          { key: 'order' as const, label: 'Kòmand' },
+          { key: 'other' as const, label: 'Lòt' },
+        ]).map((f) => (
+          <button
+            key={f.key}
+            type="button"
+            onClick={() => setTypeFilter(f.key)}
+            className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+              typeFilter === f.key ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-100'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
       {unread && (
         <button
           type="button"
@@ -686,18 +948,25 @@ function CustomerNotifications({ userId }: { userId: string }) {
           Make tout yo li
         </button>
       )}
-      {notifs.map((n) => (
-        <button
-          key={n.id}
-          type="button"
-          onClick={() => { if (!n.read) void markRead(n.id); }}
-          className={`w-full text-left rounded-lg p-3 border ${n.read ? 'bg-white border-slate-100' : 'bg-emerald-50 border-emerald-100'}`}
-        >
-          <p className="text-sm font-semibold text-slate-900">{n.title}</p>
-          {n.body && <p className="text-xs text-slate-500 mt-0.5">{n.body}</p>}
-          <p className="text-[10px] text-slate-400 mt-1">{new Date(n.created_at).toLocaleString('fr-FR')}</p>
-        </button>
-      ))}
+      {filtered.length === 0 ? (
+        <p className="text-sm text-slate-400 text-center py-6">Pa gen notifikasyon nan kategori sa a.</p>
+      ) : (
+        filtered.map((n) => (
+          <button
+            key={n.id}
+            type="button"
+            onClick={() => { if (!n.read) void markRead(n.id); }}
+            className={`w-full text-left rounded-lg p-3 border ${n.read ? 'bg-white border-slate-100' : 'bg-emerald-50 border-emerald-100'}`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-sm font-semibold text-slate-900">{n.title}</p>
+              <span className="text-[10px] text-slate-400 shrink-0">{n.type}</span>
+            </div>
+            {n.body && <p className="text-xs text-slate-500 mt-0.5">{n.body}</p>}
+            <p className="text-[10px] text-slate-400 mt-1">{new Date(n.created_at).toLocaleString('fr-FR')}</p>
+          </button>
+        ))
+      )}
     </div>
   );
 }
