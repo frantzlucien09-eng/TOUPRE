@@ -83,6 +83,17 @@ All required green before go-live (re-run after this commit).
 
 ---
 
+## Phase D — Private beta
+
+| Asset | Location |
+|-------|----------|
+| Demo vendors / customers / products | `supabase/seed/demo_production_data.sql` |
+| Seed instructions | `docs/PRIVATE_BETA.md` |
+| Beta testing checklist | `docs/BETA_TESTING_CHECKLIST.md` |
+| MonCash full test plan | `docs/MONCASH_FULL_TEST_PLAN.md` |
+
+---
+
 ## Go-live blockers (ops, not code)
 
 1. Set Edge secrets (`MONCASH_*`, `ALLOWED_ORIGINS`, `ALLOW_DEV_OTP=false`, `PAYMENT_RETURN_URL`).

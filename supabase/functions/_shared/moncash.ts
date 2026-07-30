@@ -187,7 +187,21 @@ export async function captureMoncashByTransactionId(
   };
 }
 
-/** Optional shared-secret header check for server webhooks. */
+/** Constant-time string compare (Edge-safe). */
+function timingSafeEqualString(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const bufA = enc.encode(a);
+  const bufB = enc.encode(b);
+  if (bufA.length !== bufB.length) return false;
+  let diff = 0;
+  for (let i = 0; i < bufA.length; i++) diff |= bufA[i]! ^ bufB[i]!;
+  return diff === 0;
+}
+
+/**
+ * Verify MonCash / TOUPRE webhook shared secret.
+ * Accepts: x-moncash-signature | x-webhook-secret | x-signature
+ */
 export function verifyMoncashWebhookSecret(headers: Record<string, string>): boolean {
   const expected = Deno.env.get('MONCASH_WEBHOOK_SECRET');
   if (!expected) return false;
@@ -196,5 +210,25 @@ export function verifyMoncashWebhookSecret(headers: Record<string, string>): boo
     headers['x-webhook-secret'] ||
     headers['x-signature'] ||
     '';
-  return got.length > 0 && got === expected;
+  if (!got) return false;
+  return timingSafeEqualString(got, expected);
 }
+
+/** Production: require configured secret; reject unsigned unless explicitly allowed. */
+export function moncashWebhookAuthAllowed(headers: Record<string, string>): {
+  allowed: boolean;
+  signatureValid: boolean;
+  reason?: string;
+} {
+  const secretConfigured = Boolean(Deno.env.get('MONCASH_WEBHOOK_SECRET'));
+  const signatureValid = verifyMoncashWebhookSecret(headers);
+  if (signatureValid) return { allowed: true, signatureValid: true };
+  if (Deno.env.get('MONCASH_ALLOW_UNSIGNED_CAPTURE') === 'true') {
+    return { allowed: true, signatureValid: false, reason: 'unsigned_capture_allowed' };
+  }
+  if (!secretConfigured) {
+    return { allowed: false, signatureValid: false, reason: 'webhook_secret_missing' };
+  }
+  return { allowed: false, signatureValid: false, reason: 'invalid_signature' };
+}
+

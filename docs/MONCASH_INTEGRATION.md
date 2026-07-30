@@ -63,6 +63,12 @@ App return hash route: `#/payment/return`
 3. Pay a small ad fee and a small order; confirm `payments.status=paid`, linked order/ad row, and audit log.
 4. Hit `GET /functions/v1/health` — `moncash.credentials=configured`.
 
+Full matrix (initiation, confirmation, webhooks, signature 401, retry, production secrets): **`docs/MONCASH_FULL_TEST_PLAN.md`**.
+
+## Signature verification
+
+POST `/functions/v1/payment-webhook?provider=moncash` requires `MONCASH_WEBHOOK_SECRET` via `x-moncash-signature` (or `x-webhook-secret` / `x-signature`). Comparison is timing-safe. Invalid signature → **401**. Settlement always re-checks Digicel capture APIs.
+
 ## Production readiness checklist
 
 - [ ] Live Digicel credentials in Edge secrets
@@ -72,4 +78,5 @@ App return hash route: `#/payment/return`
 - [ ] `ALLOW_DEV_OTP=false`
 - [ ] `VITE_MONCASH_ENABLED=true` on production build
 - [ ] Smoke + typecheck + lint + build green
-- [ ] Manual sandbox end-to-end signed off before go-live
+- [ ] Manual sandbox end-to-end signed off before go-live (`MONCASH_FULL_TEST_PLAN.md`)
+- [ ] Private beta checklist signed (`BETA_TESTING_CHECKLIST.md`)

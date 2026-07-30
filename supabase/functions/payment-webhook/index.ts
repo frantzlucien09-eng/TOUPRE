@@ -12,7 +12,7 @@ import {
   captureMoncashByOrderId,
   captureMoncashByTransactionId,
   moncashCredentialsConfigured,
-  verifyMoncashWebhookSecret,
+  moncashWebhookAuthAllowed,
 } from '../_shared/moncash.ts';
 
 Deno.serve(async (req) => {
@@ -107,29 +107,60 @@ Deno.serve(async (req) => {
       null;
 
     if (provider === 'moncash' && moncashCredentialsConfigured()) {
-      signatureValid = verifyMoncashWebhookSecret(headersObj);
-      // Also accept verified capture when secret matches OR when we can independently verify with API
-      if (signatureValid || Deno.env.get('MONCASH_ALLOW_UNSIGNED_CAPTURE') === 'true') {
-        const details = transactionId
-          ? await captureMoncashByTransactionId(transactionId)
-          : paymentId
-            ? await captureMoncashByOrderId(paymentId)
-            : null;
-        if (details?.ok) {
-          signatureValid = true;
-          paymentId = paymentId || details.orderId || null;
-          if (paymentId) {
-            await admin.rpc('transition_payment_status', {
-              p_payment_id: paymentId,
-              p_new_status: 'paid',
-              p_provider_payment_id: details.transactionId ?? null,
-              p_provider_raw: details.raw,
-              p_metadata: { moncash_webhook: true, source: 'post_webhook' },
-            });
-            settled = true;
-          }
+      const auth = moncashWebhookAuthAllowed(headersObj);
+      signatureValid = auth.signatureValid;
+
+      if (!auth.allowed) {
+        await admin.rpc('record_payment_webhook', {
+          p_provider: 'moncash',
+          p_event_id: transactionId || (payload.id as string) || null,
+          p_event_type: 'payment.rejected',
+          p_payload: payload,
+          p_headers: headersObj,
+          p_signature: headersObj['x-moncash-signature'] || headersObj['x-signature'] || null,
+          p_signature_valid: false,
+          p_payment_id: paymentId,
+        }).catch(() => null);
+
+        return new Response(
+          JSON.stringify({
+            success: false,
+            error: 'Unauthorized webhook',
+            error_code: auth.reason ?? 'invalid_signature',
+          }),
+          { status: 401, headers: { ...cors, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Capture only when auth allowed — always re-verify with MonCash API before settle
+      const details = transactionId
+        ? await captureMoncashByTransactionId(transactionId)
+        : paymentId
+          ? await captureMoncashByOrderId(paymentId)
+          : null;
+      if (details?.ok) {
+        signatureValid = true;
+        paymentId = paymentId || details.orderId || null;
+        if (paymentId) {
+          await admin.rpc('transition_payment_status', {
+            p_payment_id: paymentId,
+            p_new_status: 'paid',
+            p_provider_payment_id: details.transactionId ?? null,
+            p_provider_raw: details.raw,
+            p_metadata: {
+              moncash_webhook: true,
+              source: 'post_webhook',
+              signature_valid: auth.signatureValid,
+            },
+          });
+          settled = true;
         }
       }
+    } else if (provider === 'moncash') {
+      return new Response(
+        JSON.stringify({ success: false, error_code: 'provider_not_connected', error: 'MonCash pa konfigire' }),
+        { status: 503, headers: { ...cors, 'Content-Type': 'application/json' } }
+      );
     }
 
     const eventId =

@@ -56,9 +56,13 @@ const criticalPaths = [
   'supabase/functions/health/index.ts',
   'supabase/functions/_shared/moncash.ts',
   'docs/MONCASH_INTEGRATION.md',
+  'docs/MONCASH_FULL_TEST_PLAN.md',
   'docs/BACKUP_AND_RESTORE.md',
   'docs/PRODUCTION_OPS.md',
+  'docs/PRIVATE_BETA.md',
+  'docs/BETA_TESTING_CHECKLIST.md',
   'docs/FINAL_PRODUCTION_READINESS_REPORT.md',
+  'supabase/seed/demo_production_data.sql',
   'vercel.json',
   '.env.example',
 ];
@@ -167,6 +171,11 @@ assert(existsSync(join(root, 'src/pages/CustomerCheckoutPage.tsx')), 'CustomerCh
   assert(shared.includes('CreatePayment'), 'shared MonCash CreatePayment helper');
   assert(shared.includes('RetrieveOrderPayment'), 'shared MonCash capture-by-order');
   assert(shared.includes('verifyMoncashWebhookSecret'), 'shared webhook secret helper');
+  assert(shared.includes('timingSafeEqualString') || shared.includes('timingSafe'), 'webhook secret uses timing-safe compare');
+  assert(shared.includes('moncashWebhookAuthAllowed'), 'webhook auth gate helper');
+  const webhook = readFileSync(join(root, 'supabase/functions/payment-webhook/index.ts'), 'utf8');
+  assert(webhook.includes('moncashWebhookAuthAllowed'), 'payment-webhook enforces signature auth');
+  assert(webhook.includes('401'), 'payment-webhook returns 401 on bad signature');
   const envEx = readFileSync(join(root, '.env.example'), 'utf8');
   assert(envEx.includes('VITE_MONCASH_ENABLED'), '.env.example documents UI gate');
   assert(envEx.includes('MONCASH_CLIENT_SECRET'), '.env.example documents Edge secrets');
@@ -178,6 +187,7 @@ assert(existsSync(join(root, 'src/pages/CustomerCheckoutPage.tsx')), 'CustomerCh
   assert(legal.includes('privacy:'), 'legal privacy doc');
   assert(legal.includes('terms:'), 'legal terms doc');
   assert(legal.includes("'vendor-terms'") || legal.includes('vendor-terms:'), 'legal vendor-terms doc');
+  assert(legal.includes('Vendor Agreement') || legal.includes('Akò Vandè'), 'vendor agreement title');
   assert(legal.includes("'classified-policy'") || legal.includes('classified-policy:'), 'legal classified policy');
   assert(legal.includes("'payment-policy'") || legal.includes('payment-policy:'), 'legal payment policy');
   assert(legal.includes("'refund-policy'") || legal.includes('refund-policy:'), 'legal refund policy');
@@ -193,6 +203,19 @@ assert(existsSync(join(root, 'src/pages/CustomerCheckoutPage.tsx')), 'CustomerCh
   assert(main.includes('initClientMonitoring'), 'main initializes client monitoring');
   const health = readFileSync(join(root, 'supabase/functions/health/index.ts'), 'utf8');
   assert(health.includes('moncash'), 'health reports MonCash credential presence');
+}
+
+// 15. Private beta seed richness
+{
+  const seed = readFileSync(join(root, 'supabase/seed/demo_production_data.sql'), 'utf8');
+  assert(seed.includes('Maché Demo Petyonvil'), 'demo vendor 1 in seed');
+  assert(seed.includes('demo_vendor_user_id_2') || seed.includes('Anons Demo Delmas'), 'demo vendor 2 support');
+  assert(seed.includes('Demo Kliyan'), 'demo customer in seed');
+  assert(seed.includes('Diri Djon Djon'), 'demo marketplace product');
+  assert(seed.includes('Kay 3 Chanm'), 'demo classified product');
+  const beta = readFileSync(join(root, 'docs/BETA_TESTING_CHECKLIST.md'), 'utf8');
+  assert(beta.includes('MonCash'), 'beta checklist covers MonCash');
+  assert(beta.includes('legal'), 'beta checklist covers legal');
 }
 
 console.log(failed === 0 ? '\nAll smoke checks passed.\n' : `\n${failed} smoke check(s) failed.\n`);

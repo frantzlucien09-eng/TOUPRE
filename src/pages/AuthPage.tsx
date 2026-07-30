@@ -670,7 +670,7 @@ function RegisterWizard({
               <div className="flex flex-wrap gap-2 pt-1">
                 <a href="#/legal/terms" className="text-[11px] text-emerald-700 font-semibold underline">Tèm</a>
                 <a href="#/legal/privacy" className="text-[11px] text-emerald-700 font-semibold underline">Vi Prive</a>
-                <a href="#/legal/vendor-terms" className="text-[11px] text-emerald-700 font-semibold underline">Tèm Vandè</a>
+                <a href="#/legal/vendor-terms" className="text-[11px] text-emerald-700 font-semibold underline">Akò Vandè</a>
                 <a href="#/legal/payment-policy" className="text-[11px] text-emerald-700 font-semibold underline">Peman</a>
                 <a href="#/legal/classified-policy" className="text-[11px] text-emerald-700 font-semibold underline">Anons</a>
                 <a href="#/legal/refund-policy" className="text-[11px] text-emerald-700 font-semibold underline">Rembousman</a>

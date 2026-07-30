@@ -80,25 +80,29 @@ export const LEGAL_DOCS: Record<LegalDocKey, LegalDoc> = {
   },
   'vendor-terms': {
     key: 'vendor-terms',
-    title: 'Tèm Vandè',
+    title: 'Akò Vandè (Vendor Agreement)',
     version: LEGAL_VERSION,
     updatedAt: '30 Jiyè 2026',
-    summary: 'Obligasyon espesyal pou vandè ki vann oswa pibliye anons sou TOUPRE.',
+    summary: 'Akò ofisyèl ant TOUPRE ak vandè ki vann oswa pibliye anons sou platfòm lan.',
     sections: [
       {
-        heading: '1. KYC',
+        heading: '1. Akseptasyon akò a',
+        body: 'Lè w enskri kòm vandè, ou aksepte Akò Vandè sa a ansanm ak Tèm ak Kondisyon ak Règleman sou Vi Prive.',
+      },
+      {
+        heading: '2. KYC',
         body: 'Vandè dwe konplete verifikasyon idantite (KYC) avan yo vann. Dokiman fo oswa enkonplè ka mennen nan rejè oswa sispansyon.',
       },
       {
-        heading: '2. Komisyon ak retrè',
+        heading: '3. Komisyon ak retrè',
         body: 'TOUPRE ka prelve komisyon sou kòmand. Retrè fèt via MonCash selon pwosesis admin. Vandè dwe bay enfòmasyon MonCash ki kòrèk.',
       },
       {
-        heading: '3. Kalite ak livrezon',
+        heading: '4. Kalite ak livrezon',
         body: 'Vandè responsab pou deskripsyon pwodwi, stok, tan livrezon, epi prèv livrezon lè sa nesesè.',
       },
       {
-        heading: '4. Anons Kay/Machin',
+        heading: '5. Anons Kay/Machin',
         body: 'Anons mande frè piblisite. Anons ekspire pa efase; yo ka renouvle. Kontni dwe vre epi legal.',
       },
     ],
@@ -183,7 +187,7 @@ export const LEGAL_DOCS: Record<LegalDocKey, LegalDoc> = {
 export const LEGAL_NAV: { key: LegalDocKey; path: string; title: string }[] = [
   { key: 'terms', path: '#/legal/terms', title: 'Tèm ak Kondisyon' },
   { key: 'privacy', path: '#/legal/privacy', title: 'Vi Prive' },
-  { key: 'vendor-terms', path: '#/legal/vendor-terms', title: 'Tèm Vandè' },
+  { key: 'vendor-terms', path: '#/legal/vendor-terms', title: 'Akò Vandè' },
   { key: 'classified-policy', path: '#/legal/classified-policy', title: 'Anons Kay/Machin' },
   { key: 'payment-policy', path: '#/legal/payment-policy', title: 'Peman' },
   { key: 'refund-policy', path: '#/legal/refund-policy', title: 'Rembousman' },

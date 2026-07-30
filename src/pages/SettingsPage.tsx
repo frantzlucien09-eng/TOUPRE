@@ -145,7 +145,7 @@ export function SettingsPage({ onBack }: Props) {
           <p className="text-xs text-slate-500">Li dokiman legal ofisyèl yo:</p>
           <a href="#/legal/terms" className="block font-semibold text-emerald-700 underline">Tèm ak Kondisyon</a>
           <a href="#/legal/privacy" className="block font-semibold text-emerald-700 underline">Règleman sou Vi Prive</a>
-          <a href="#/legal/vendor-terms" className="block font-semibold text-emerald-700 underline">Tèm Vandè</a>
+          <a href="#/legal/vendor-terms" className="block font-semibold text-emerald-700 underline">Akò Vandè (Vendor Agreement)</a>
           <a href="#/legal/classified-policy" className="block font-semibold text-emerald-700 underline">Politik Anons Kay/Machin</a>
           <a href="#/legal/payment-policy" className="block font-semibold text-emerald-700 underline">Politik Peman</a>
           <a href="#/legal/refund-policy" className="block font-semibold text-emerald-700 underline">Politik Rembousman / Diskisyon</a>
