@@ -301,7 +301,7 @@ export function AuthPage() {
             <>
               <div className="flex gap-1 p-1 bg-slate-100 rounded-xl mb-5">
                 <TabButton active label="Konekte" />
-                <TabButton label="Enskri" onClick={startRegister} />
+                <TabButton active={false} label="Enskri" onClick={startRegister} />
               </div>
               <form onSubmit={handleLogin} className="space-y-3">
                 <Field icon={<Mail size={18} />} type="email" placeholder="Imèl" value={email} onChange={setEmail} required />
