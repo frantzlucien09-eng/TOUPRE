@@ -31,14 +31,16 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
       const now = new Date();
       const expires = new Date(now.getTime() + AD_DURATION_DAYS * 24 * 60 * 60 * 1000);
 
+      // Payment row is pending until MonCash/admin verification. Listing still
+      // activates so Kay/Machin ads remain usable without a separate approve UI.
       const { error: payError } = await supabase.from('ad_payments').insert({
         vendor_id: vendor!.id,
         product_id: productId,
         amount: AD_FEE,
         category,
-        status: 'paid',
+        status: 'pending',
         moncash_phone: phone,
-        paid_at: now.toISOString(),
+        paid_at: null,
       });
       if (payError) throw payError;
 
@@ -56,7 +58,7 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
         updated_at: now.toISOString(),
       }).eq('id', vendor!.id);
 
-      toast('Peman konfime! Anons ou pibliye.');
+      toast('Anons pibliye. Demann peman MonCash anrejistre pou verifikasyon.');
       onPaid();
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Erè, eseye ankò', 'error');
@@ -99,7 +101,7 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
 
         <div className="flex items-start gap-2 text-[11px] text-slate-500">
           <ShieldCheck size={14} className="text-emerald-600 mt-0.5 shrink-0" />
-          <p>Anons ou ap parèt piblikman pou tout kliyan wè pou {AD_DURATION_DAYS} jou. Apre sa, ou ka repibliye l pou menm frè a.</p>
+          <p>Anons ou ap parèt piblikman pou {AD_DURATION_DAYS} jou. Peman MonCash rete an atant verifikasyon.</p>
         </div>
 
         <div className="flex gap-3">
@@ -112,7 +114,7 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
             className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-60"
           >
             {loading ? <Loader2 size={18} className="animate-spin" /> : null}
-            Peye {formatHTG(AD_FEE)}
+            Voye peman {formatHTG(AD_FEE)}
           </button>
         </div>
       </div>

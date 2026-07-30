@@ -10,6 +10,7 @@ import { Modal } from '@/components/Modal';
 import { EmptyState } from '@/components/EmptyState';
 import { StatusPill } from './HomePage';
 import { isNew, isActive, isDone, isDelivered, isCancelled } from '@/lib/orderStatus';
+import { orderStatusRpcFailed } from '@/lib/orderRpc';
 import {
   Loader2, Truck, Package, Check, X, ChevronRight, MapPin, Phone, Clock,
 } from 'lucide-react';
@@ -51,12 +52,13 @@ export function OrdersPage({ initialFilter, initialTab, onOpenOrder }: { initial
   }, [vendor]);
 
   const accept = async (o: Order) => {
-    const { error } = await supabase.rpc('update_order_status', {
+    const { data, error } = await supabase.rpc('update_order_status', {
       p_order_id: o.id,
       p_new_status: 'accepted',
     });
-    if (error) {
-      toast('Erè, eseye ankò', 'error');
+    const fail = orderStatusRpcFailed(error, data);
+    if (fail) {
+      toast(fail, 'error');
       return;
     }
     setOrders((list) => list.map((x) => (x.id === o.id ? { ...x, status: 'accepted' } : x)));
@@ -65,13 +67,14 @@ export function OrdersPage({ initialFilter, initialTab, onOpenOrder }: { initial
   };
 
   const reject = async (o: Order, reason: string) => {
-    const { error } = await supabase.rpc('update_order_status', {
+    const { data, error } = await supabase.rpc('update_order_status', {
       p_order_id: o.id,
       p_new_status: 'cancelled',
       p_note: reason || null,
     });
-    if (error) {
-      toast('Erè, eseye ankò', 'error');
+    const fail = orderStatusRpcFailed(error, data);
+    if (fail) {
+      toast(fail, 'error');
       return;
     }
     setOrders((list) => list.map((x) => (x.id === o.id ? { ...x, status: 'cancelled', reject_reason: reason } : x)));

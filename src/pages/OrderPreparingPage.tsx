@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/lib/toast';
 import { formatHTG, formatDateTime } from '@/lib/format';
-import type { Order } from '@/lib/types';
+import { orderStatusRpcFailed } from '@/lib/orderRpc';
+import type { Order, OrderStatus } from '@/lib/types';
 import { StatusPill } from './HomePage';
 import {
   ArrowLeft, MapPin, MessageCircle, Check, Truck, Package, Loader2,
@@ -21,7 +22,7 @@ type StepButton = {
   key: string;
   label: string;
   icon: React.ReactNode;
-  targetStatus: string;
+  targetStatus: OrderStatus;
   successMsg: string;
 };
 
@@ -29,7 +30,7 @@ export function OrderPreparingPage({ order, onBack, onDelivering, onMessage, onS
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState<string | null>(null);
-  const [currentStatus, setCurrentStatus] = useState(order.status);
+  const [currentStatus, setCurrentStatus] = useState<OrderStatus>(order.status);
   const isPickup = order.delivery_type === 'pickup';
 
   const shortId = `#TP-${order.id.slice(0, 4).toUpperCase()}`;
@@ -60,14 +61,15 @@ export function OrderPreparingPage({ order, onBack, onDelivering, onMessage, onS
   const advance = async (step: StepButton, after?: () => void) => {
     setLoadingStep(step.key);
     setLoading(true);
-    const { error } = await supabase.rpc('update_order_status', {
+    const { data, error } = await supabase.rpc('update_order_status', {
       p_order_id: order.id,
       p_new_status: step.targetStatus,
     });
     setLoading(false);
     setLoadingStep(null);
-    if (error) {
-      toast('Erè, eseye ankò', 'error');
+    const fail = orderStatusRpcFailed(error, data);
+    if (fail) {
+      toast(fail, 'error');
       return;
     }
     setCurrentStatus(step.targetStatus);

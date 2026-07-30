@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { OAUTH_INTENT_KEY } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
 import { Loader2 } from 'lucide-react';
 
@@ -31,7 +32,12 @@ export function GoogleSignInButton({ context, variant = 'light', label, classNam
   const handleGoogle = async () => {
     setLoading(true);
     try {
-      const redirectTo = `${window.location.origin}/#${context === 'admin' ? 'admin' : ''}`;
+      localStorage.setItem(OAUTH_INTENT_KEY, context);
+      const hash =
+        context === 'admin' ? 'admin'
+          : context === 'vendor' ? 'oauth-vendor'
+            : '';
+      const redirectTo = `${window.location.origin}/#${hash}`;
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
@@ -43,6 +49,7 @@ export function GoogleSignInButton({ context, variant = 'light', label, classNam
       });
       if (error) throw error;
     } catch (err) {
+      localStorage.removeItem(OAUTH_INTENT_KEY);
       const msg = err instanceof Error ? err.message : 'Erè ak koneksyon Google, eseye ankò';
       toast(msg, 'error');
       setLoading(false);

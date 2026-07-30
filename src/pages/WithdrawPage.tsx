@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/lib/toast';
@@ -10,6 +10,8 @@ import { EmptyState } from '@/components/EmptyState';
 import {
   Wallet, Phone, User, Loader2, Save, Pencil, ArrowDownToLine, Clock, CheckCircle2, XCircle,
 } from 'lucide-react';
+
+const LOCKED_STATUSES = new Set(['pending', 'approved', 'processing']);
 
 export function WithdrawPage({ onBack }: { onBack: () => void }) {
   const { vendor, refreshVendor } = useAuth();
@@ -37,6 +39,15 @@ export function WithdrawPage({ onBack }: { onBack: () => void }) {
     load();
   }, [vendor]);
 
+  const pendingLocked = useMemo(
+    () => withdrawals
+      .filter((w) => LOCKED_STATUSES.has(w.status))
+      .reduce((s, w) => s + Number(w.amount), 0),
+    [withdrawals]
+  );
+
+  const availableBalance = Math.max(0, Number(vendor?.balance ?? 0) - pendingLocked);
+
   if (!vendor) return null;
 
   const saveMoncash = async () => {
@@ -61,13 +72,18 @@ export function WithdrawPage({ onBack }: { onBack: () => void }) {
   };
 
   const submitWithdraw = async () => {
+    if (!vendor.moncash_phone || !vendor.moncash_name) {
+      toast('Anrejistre enfòmasyon MonCash ou anvan', 'error');
+      setEditingMoncash(true);
+      return;
+    }
     const amt = Number(amount);
     if (!amt || amt <= 0) {
       toast('Tanpri antre yon kantite', 'error');
       return;
     }
-    if (amt > Number(vendor.balance)) {
-      toast('Kantite a depase balans ou', 'error');
+    if (amt > availableBalance) {
+      toast('Kantite a depase balans disponib ou', 'error');
       return;
     }
     setSubmitting(true);
@@ -77,7 +93,7 @@ export function WithdrawPage({ onBack }: { onBack: () => void }) {
       status: 'pending',
     });
     if (error) {
-      toast('Erè, eseye ankò', 'error');
+      toast(error.message || 'Erè, eseye ankò', 'error');
       setSubmitting(false);
       return;
     }
@@ -96,15 +112,18 @@ export function WithdrawPage({ onBack }: { onBack: () => void }) {
       <Header title="Retire Lajan" subtitle="Via MonCash" />
 
       <div className="px-4 pt-4 space-y-4">
-        {/* Balance */}
         <div className="bg-gradient-to-br from-emerald-600 to-emerald-700 rounded-2xl p-5 text-white shadow-sm">
           <div className="flex items-center gap-2 text-emerald-50 text-xs">
             <Wallet size={16} /> Balans disponib
           </div>
-          <p className="text-3xl font-bold mt-1">{formatHTG(vendor.balance)}</p>
+          <p className="text-3xl font-bold mt-1">{formatHTG(availableBalance)}</p>
+          {pendingLocked > 0 && (
+            <p className="text-[11px] text-emerald-100 mt-2">
+              Total: {formatHTG(vendor.balance)} · An atant: {formatHTG(pendingLocked)}
+            </p>
+          )}
         </div>
 
-        {/* MonCash info */}
         <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
           <h3 className="font-bold text-slate-900 text-sm mb-3">Enfòmasyon MonCash</h3>
           {editingMoncash ? (
@@ -154,7 +173,6 @@ export function WithdrawPage({ onBack }: { onBack: () => void }) {
           )}
         </div>
 
-        {/* Withdraw form */}
         <div className="bg-white rounded-2xl p-4 border border-slate-100 shadow-sm">
           <h3 className="font-bold text-slate-900 text-sm mb-3">Fè demann retire</h3>
           <div className="flex gap-2">
@@ -176,10 +194,9 @@ export function WithdrawPage({ onBack }: { onBack: () => void }) {
               Voye
             </button>
           </div>
-          <p className="text-[11px] text-slate-400 mt-2">Maksimòm: {formatHTG(vendor.balance)}</p>
+          <p className="text-[11px] text-slate-400 mt-2">Maksimòm: {formatHTG(availableBalance)}</p>
         </div>
 
-        {/* History */}
         <div>
           <h3 className="font-bold text-slate-900 text-sm mb-2">Istorik retire</h3>
           {withdrawals.length === 0 ? (

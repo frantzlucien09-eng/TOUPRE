@@ -110,21 +110,11 @@ export function SettingsPage({ onBack }: Props) {
       </Modal>
 
       <Modal open={open === 'payment'} onClose={() => setOpen(null)} title="Metòd Peman">
-        <div className="space-y-3">
-          <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-xl">
-            <CreditCard size={20} className="text-emerald-600" />
-            <div>
-              <p className="font-semibold text-slate-900 text-sm">MonCash</p>
-              <p className="text-xs text-slate-500">Sèl metòd peman disponib</p>
-            </div>
-            <Check size={18} className="text-emerald-600 ml-auto" />
-          </div>
-          <p className="text-xs text-slate-500">Peman pou kliyan ak retrè pou vandè sèlman via MonCash.</p>
-        </div>
+        <PaymentForm vendor={vendor} onDone={() => { setOpen(null); toast('Enfòmasyon MonCash anrejistre'); }} />
       </Modal>
 
       <Modal open={open === 'notifications'} onClose={() => setOpen(null)} title="Notifikasyon">
-        <NotificationsForm onDone={() => { setOpen(null); toast('Chanjman anrejistre'); }} />
+        <NotificationsForm vendorId={vendor.id} onDone={() => { setOpen(null); toast('Chanjman anrejistre'); }} />
       </Modal>
 
       <Modal open={open === 'language'} onClose={() => setOpen(null)} title="Lang">
@@ -299,8 +289,10 @@ function ContactForm({ vendor, onDone }: { vendor: Vendor; onDone: () => void })
       return;
     }
     setLoading(true);
-    await supabase.from('vendors').update({ phone, updated_at: new Date().toISOString() }).eq('id', vendor.id);
+    const { error } = await supabase.from('vendors').update({ phone, updated_at: new Date().toISOString() }).eq('id', vendor.id);
     setLoading(false);
+    if (error) { toast(error.message || 'Erè, eseye ankò', 'error'); return; }
+    await refreshVendor();
     onDone();
   };
 
@@ -378,6 +370,8 @@ function AddressForm({
   citiesFor: (d: string) => string[];
   onDone: () => void;
 }) {
+  const { refreshVendor } = useAuth();
+  const { toast } = useToast();
   const [department, setDepartment] = useState(vendor.department ?? '');
   const [city, setCity] = useState(vendor.city ?? '');
   const [otherCity, setOtherCity] = useState('');
@@ -390,10 +384,12 @@ function AddressForm({
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    await supabase.from('vendors').update({
+    const { error } = await supabase.from('vendors').update({
       department, city: finalCity, address, updated_at: new Date().toISOString(),
     }).eq('id', vendor.id);
     setLoading(false);
+    if (error) { toast(error.message || 'Erè, eseye ankò', 'error'); return; }
+    await refreshVendor();
     onDone();
   };
 
@@ -428,10 +424,28 @@ function AddressForm({
   );
 }
 
-function NotificationsForm({ onDone }: { onDone: () => void }) {
+function notifPrefsKey(vendorId: string) {
+  return `toupre_vendor_notif_prefs_${vendorId}`;
+}
+
+function NotificationsForm({ vendorId, onDone }: { vendorId: string; onDone: () => void }) {
   const [push, setPush] = useState(true);
   const [sms, setSms] = useState(true);
   const [email, setEmail] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(notifPrefsKey(vendorId));
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { push?: boolean; sms?: boolean; email?: boolean };
+      if (typeof parsed.push === 'boolean') setPush(parsed.push);
+      if (typeof parsed.sms === 'boolean') setSms(parsed.sms);
+      if (typeof parsed.email === 'boolean') setEmail(parsed.email);
+    } catch {
+      // ignore corrupt local prefs
+    }
+  }, [vendorId]);
 
   const Toggle = ({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) => (
     <button type="button" onClick={() => onChange(!value)} className="w-full flex items-center justify-between p-3 bg-slate-50 rounded-xl">
@@ -442,14 +456,80 @@ function NotificationsForm({ onDone }: { onDone: () => void }) {
     </button>
   );
 
+  const save = async () => {
+    setLoading(true);
+    const prefs = { push, sms, email, updated_at: new Date().toISOString() };
+    localStorage.setItem(notifPrefsKey(vendorId), JSON.stringify(prefs));
+    // Best-effort sync into settings table when available
+    await supabase.from('settings').upsert({
+      key: `vendor_notifications:${vendorId}`,
+      value: JSON.stringify(prefs),
+      label: 'Vendor notification preferences',
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'key' });
+    setLoading(false);
+    onDone();
+  };
+
   return (
     <div className="space-y-3">
       <Toggle label="Push" value={push} onChange={setPush} />
       <Toggle label="SMS" value={sms} onChange={setSms} />
       <Toggle label="Imèl" value={email} onChange={setEmail} />
-      <button onClick={onDone} className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition">
-        <Save size={18} /> Anrejistre
+      <button onClick={save} disabled={loading} className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-60">
+        {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Anrejistre
       </button>
     </div>
+  );
+}
+
+function PaymentForm({ vendor, onDone }: { vendor: Vendor; onDone: () => void }) {
+  const { refreshVendor } = useAuth();
+  const { toast } = useToast();
+  const [phone, setPhone] = useState(vendor.moncash_phone ?? '');
+  const [name, setName] = useState(vendor.moncash_name ?? '');
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phone.trim() || !name.trim()) {
+      toast('Tanpri antre nimewo ak non MonCash', 'error');
+      return;
+    }
+    setLoading(true);
+    const { error } = await supabase.from('vendors').update({
+      moncash_phone: phone.trim(),
+      moncash_name: name.trim(),
+      updated_at: new Date().toISOString(),
+    }).eq('id', vendor.id);
+    setLoading(false);
+    if (error) { toast(error.message || 'Erè, eseye ankò', 'error'); return; }
+    await refreshVendor();
+    onDone();
+  };
+
+  return (
+    <form onSubmit={submit} className="space-y-3">
+      <div className="flex items-center gap-3 p-3 bg-emerald-50 rounded-xl">
+        <CreditCard size={20} className="text-emerald-600" />
+        <div>
+          <p className="font-semibold text-slate-900 text-sm">MonCash</p>
+          <p className="text-xs text-slate-500">Sèl metòd peman disponib</p>
+        </div>
+        <Check size={18} className="text-emerald-600 ml-auto" />
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-slate-600">Nimewo MonCash</label>
+        <input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+509 3700 0000" className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+      </div>
+      <div>
+        <label className="text-xs font-semibold text-slate-600">Non sou kont MonCash</label>
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Non konplè" className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500" />
+      </div>
+      <p className="text-xs text-slate-500">Peman pou kliyan ak retrè pou vandè sèlman via MonCash.</p>
+      <button type="submit" disabled={loading} className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-60">
+        {loading ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Anrejistre
+      </button>
+    </form>
   );
 }

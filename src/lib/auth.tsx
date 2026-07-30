@@ -3,6 +3,8 @@ import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import type { Vendor, Customer } from './types';
 
+export const OAUTH_INTENT_KEY = 'toupre_oauth_intent';
+
 type AuthState = {
   session: Session | null;
   user: User | null;
@@ -24,6 +26,36 @@ const AuthContext = createContext<AuthState>({
   refreshVendor: async () => {},
   reloadVendor: async () => null,
 });
+
+async function ensureVendorFromOAuthIntent(user: User): Promise<void> {
+  const intent = localStorage.getItem(OAUTH_INTENT_KEY);
+  if (intent !== 'vendor') return;
+
+  const { data: existing } = await supabase
+    .from('vendors')
+    .select('id')
+    .eq('user_id', user.id)
+    .maybeSingle();
+
+  if (!existing) {
+    const fullName =
+      (user.user_metadata?.full_name as string | undefined) ||
+      (user.user_metadata?.name as string | undefined) ||
+      user.email?.split('@')[0] ||
+      'Vandè TOUPRE';
+
+    await supabase.from('vendors').insert({
+      user_id: user.id,
+      business_name: fullName,
+      email: user.email ?? null,
+      status: 'pending',
+    });
+
+    await supabase.from('profiles').update({ role: 'vendor' }).eq('user_id', user.id);
+  }
+
+  localStorage.removeItem(OAUTH_INTENT_KEY);
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -61,12 +93,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return vData as Vendor | null;
   };
 
+  const bootstrapUser = async (u: User) => {
+    await ensureVendorFromOAuthIntent(u);
+    return loadVendor(u.id);
+  };
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
       setUser(data.session?.user ?? null);
       if (data.session?.user) {
-        loadVendor(data.session.user.id).finally(() => setLoading(false));
+        bootstrapUser(data.session.user).finally(() => setLoading(false));
       } else {
         setLoading(false);
       }
@@ -80,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (event === 'SIGNED_IN' && pendingProfileUid.current === sess.user.id) {
             return;
           }
-          await loadVendor(sess.user.id);
+          await bootstrapUser(sess.user);
         } else {
           setVendor(null);
           setCustomer(null);
@@ -93,6 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = async () => {
+    localStorage.removeItem(OAUTH_INTENT_KEY);
     await supabase.auth.signOut();
     setVendor(null);
     setCustomer(null);

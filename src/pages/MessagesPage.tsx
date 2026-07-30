@@ -5,6 +5,7 @@ import { useToast } from '@/lib/toast';
 import type { Message, Product, Customer } from '@/lib/types';
 import { uploadProductPhoto } from '@/lib/media';
 import { formatHTG } from '@/lib/format';
+import { isVendorParticipant, vendorMessageOrFilter, vendorMessageRealtimeFilters } from '@/lib/vendorIds';
 import {
   ArrowLeft, Send, Camera, Loader2, Image as ImageIcon, MessageCircle, RefreshCw, Phone,
 } from 'lucide-react';
@@ -63,10 +64,12 @@ export function MessagesPage({ initialCustomerId, onClearInitial }: { initialCus
     const { data: msgs, error: msgsError } = await supabase
       .from('messages')
       .select('*')
-      .or(`recipient_id.eq.${vendor.id},receiver_id.eq.${vendor.id},sender_id.eq.${vendor.id}`)
+      .or(vendorMessageOrFilter(vendor))
       .order('created_at', { ascending: false });
 
-    console.log('[vendor inbox loaded]', { vendorId: vendor.id, userId: vendor.user_id, count: msgs?.length ?? 0, error: msgsError?.message });
+    if (msgsError && import.meta.env.DEV) {
+      console.error('[vendor inbox]', msgsError.message);
+    }
 
     if (!msgs || msgs.length === 0) {
       setConversations([]);
@@ -76,17 +79,20 @@ export function MessagesPage({ initialCustomerId, onClearInitial }: { initialCus
 
     const byKey = new Map<string, Message[]>();
     for (const m of msgs as Message[]) {
-      const otherId = m.sender_id === vendor.id ? (m.recipient_id ?? m.receiver_id) : m.sender_id;
+      const otherId = isVendorParticipant(vendor, m.sender_id)
+        ? (m.recipient_id ?? m.receiver_id)
+        : m.sender_id;
       const key = `${otherId}::${m.product_id ?? 'null'}`;
       if (!byKey.has(key)) byKey.set(key, []);
       byKey.get(key)!.push(m);
     }
-    console.log('[conversation created]', { count: byKey.size, keys: Array.from(byKey.keys()) });
 
     const customerIds = new Set<string>();
     const productIds = new Set<string>();
     byKey.forEach((list) => {
-      const otherId = list[0].sender_id === vendor.id ? (list[0].recipient_id ?? list[0].receiver_id) : list[0].sender_id;
+      const otherId = isVendorParticipant(vendor, list[0].sender_id)
+        ? (list[0].recipient_id ?? list[0].receiver_id)
+        : list[0].sender_id;
       customerIds.add(otherId);
       if (list[0].product_id) productIds.add(list[0].product_id);
     });
@@ -109,7 +115,9 @@ export function MessagesPage({ initialCustomerId, onClearInitial }: { initialCus
     byKey.forEach((list, key) => {
       const [cid, pid] = key.split('::');
       const last = list[0];
-      const unread = list.filter((m) => (m.recipient_id === vendor.id || m.receiver_id === vendor.id) && !m.read).length;
+      const unread = list.filter((m) =>
+        (isVendorParticipant(vendor, m.recipient_id) || isVendorParticipant(vendor, m.receiver_id)) && !m.read
+      ).length;
       convos.push({
         customer_id: cid,
         customer: customerMap.get(cid) ?? null,
@@ -133,21 +141,11 @@ export function MessagesPage({ initialCustomerId, onClearInitial }: { initialCus
   useEffect(() => {
     loadConversations();
     if (!vendor) return;
-    const channel = supabase
-      .channel('messages-list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `recipient_id=eq.${vendor.id}` }, (payload) => {
-        console.log('[realtime message received]', { event: payload.eventType, new: payload.new, old: payload.old });
-        loadConversations();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `receiver_id=eq.${vendor.id}` }, (payload) => {
-        console.log('[realtime message received via receiver_id]', { event: payload.eventType, new: payload.new });
-        loadConversations();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `sender_id=eq.${vendor.id}` }, (payload) => {
-        console.log('[realtime message received]', { event: payload.eventType, new: payload.new, old: payload.old });
-        loadConversations();
-      })
-      .subscribe();
+    let channel = supabase.channel('messages-list');
+    for (const filter of vendorMessageRealtimeFilters(vendor)) {
+      channel = channel.on('postgres_changes', filter, () => { loadConversations(); });
+    }
+    channel.subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [vendor]);
 
@@ -259,41 +257,39 @@ function ChatView({
 
   const load = async () => {
     if (!vendor) return;
-    const { data, error } = await supabase
+    const ids = Array.from(new Set([vendor.id, vendor.user_id].filter(Boolean)));
+    const parts = ids.flatMap((vid) => [
+      `and(sender_id.eq.${vid},recipient_id.eq.${customerId})`,
+      `and(sender_id.eq.${customerId},recipient_id.eq.${vid})`,
+      `and(sender_id.eq.${vid},receiver_id.eq.${customerId})`,
+      `and(sender_id.eq.${customerId},receiver_id.eq.${vid})`,
+    ]);
+    const { data } = await supabase
       .from('messages')
       .select('*')
-      .or(`and(sender_id.eq.${vendor.id},recipient_id.eq.${customerId}),and(sender_id.eq.${customerId},recipient_id.eq.${vendor.id}),and(sender_id.eq.${vendor.id},receiver_id.eq.${customerId}),and(sender_id.eq.${customerId},receiver_id.eq.${vendor.id})`)
+      .or(parts.join(','))
       .order('created_at', { ascending: true });
-    console.log('[vendor inbox loaded]', { vendorId: vendor.id, customerId, count: data?.length ?? 0, error: error?.message });
     setMessages((data ?? []) as Message[]);
   };
 
   useEffect(() => {
     load();
     if (!vendor) return;
-    const channel = supabase
-      .channel(`chat-${customerId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `recipient_id=eq.${vendor.id}` }, (payload) => {
-        console.log('[realtime message received]', { event: payload.eventType, new: payload.new });
-        load();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `receiver_id=eq.${vendor.id}` }, (payload) => {
-        console.log('[realtime message received via receiver_id]', { event: payload.eventType, new: payload.new });
-        load();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `sender_id=eq.${vendor.id}` }, (payload) => {
-        console.log('[realtime message received]', { event: payload.eventType, new: payload.new });
-        load();
-      })
-      .subscribe();
+    let channel = supabase.channel(`chat-${customerId}`);
+    for (const filter of vendorMessageRealtimeFilters(vendor)) {
+      channel = channel.on('postgres_changes', filter, () => { load(); });
+    }
+    channel.subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [vendor, customerId]);
 
   useEffect(() => {
     if (!vendor) return;
+    const ids = Array.from(new Set([vendor.id, vendor.user_id].filter(Boolean)));
+    const recipientOr = ids.flatMap((id) => [`recipient_id.eq.${id}`, `receiver_id.eq.${id}`]).join(',');
     supabase.from('messages')
       .update({ read: true })
-      .or(`recipient_id.eq.${vendor.id},receiver_id.eq.${vendor.id}`)
+      .or(recipientOr)
       .eq('sender_id', customerId)
       .eq('read', false)
       .then(() => { load(); });
@@ -314,9 +310,8 @@ function ChatView({
       p_body: body,
       p_product_id: product?.id ?? null,
     });
-    console.log('[message saved via rpc]', { result: rpcResult, error: rpcError?.message });
     if (rpcError || (rpcResult && !rpcResult.success)) {
-      toast('Erè, eseye ankò', 'error');
+      toast(rpcResult?.error || rpcError?.message || 'Erè, eseye ankò', 'error');
       setText(body);
     }
     setSending(false);
@@ -334,8 +329,7 @@ function ChatView({
         p_image_url: url,
         p_product_id: product?.id ?? null,
       });
-      console.log('[photo message saved via rpc]', { result: rpcResult, error: rpcError?.message });
-      if (rpcError || (rpcResult && !rpcResult.success)) throw new Error('Erè voye foto');
+      if (rpcError || (rpcResult && !rpcResult.success)) throw new Error(rpcResult?.error || 'Erè voye foto');
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Erè telechaje', 'error');
     } finally {
@@ -388,7 +382,7 @@ function ChatView({
       {/* Messages */}
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-2 bg-slate-50">
         {messages.map((m) => {
-          const mine = m.sender_id === vendor?.id;
+                const mine = vendor ? isVendorParticipant(vendor, m.sender_id) : false;
           return (
             <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
               <div className={`max-w-[75%] rounded-2xl px-3 py-2 ${mine ? 'bg-emerald-600 text-white rounded-br-md' : 'bg-white text-slate-800 border border-slate-100 rounded-bl-md'}`}>
