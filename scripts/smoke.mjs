@@ -62,6 +62,7 @@ const criticalPaths = [
   'docs/PRIVATE_BETA.md',
   'docs/BETA_TESTING_CHECKLIST.md',
   'docs/FINAL_PRODUCTION_READINESS_REPORT.md',
+  'docs/GO_LIVE_AUDIT_REPORT.md',
   'supabase/seed/demo_production_data.sql',
   'vercel.json',
   '.env.example',
