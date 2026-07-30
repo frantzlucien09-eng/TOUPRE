@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAdminAuth } from '@/lib/adminAuth';
 import { useToast } from '@/lib/toast';
@@ -8,20 +8,29 @@ import {
   Shield, Lock, Settings, Share2, ToggleRight, Wallet, FileText,
   LogOut, Menu, X, Activity, DollarSign, Loader2,
 } from 'lucide-react';
-import { AdminKycPage } from '@/pages/AdminKycPage';
-import { AdminOrdersPage } from '@/pages/AdminOrdersPage';
-import { AdminProductsPage } from '@/pages/AdminProductsPage';
-import { AdminAnalyticsPage } from '@/pages/AdminAnalyticsPage';
-import { AdminWithdrawalsPage } from '@/pages/AdminWithdrawalsPage';
-import { AdminVendorsPage } from '@/pages/AdminVendorsPage';
-import { AdminSocialPage } from '@/pages/AdminSocialPage';
-import { AdminBroadcastPage } from '@/pages/AdminBroadcastPage';
-import { AdminIntegrationsPage } from '@/pages/AdminIntegrationsPage';
-import { AdminPermissionsPage } from '@/pages/AdminPermissionsPage';
-import { AdminSecurityPage } from '@/pages/AdminSecurityPage';
-import { AdminCleanupPage } from '@/pages/AdminCleanupPage';
-import { AdminPaymentsPage } from '@/pages/AdminPaymentsPage';
 import { DateRangeFilter, getRangeStartDate, formatRangeLabel, type DateRangeKey } from '@/components/DateRangeFilter';
+
+const AdminKycPage = lazy(() => import('@/pages/AdminKycPage').then((m) => ({ default: m.AdminKycPage })));
+const AdminOrdersPage = lazy(() => import('@/pages/AdminOrdersPage').then((m) => ({ default: m.AdminOrdersPage })));
+const AdminProductsPage = lazy(() => import('@/pages/AdminProductsPage').then((m) => ({ default: m.AdminProductsPage })));
+const AdminAnalyticsPage = lazy(() => import('@/pages/AdminAnalyticsPage').then((m) => ({ default: m.AdminAnalyticsPage })));
+const AdminWithdrawalsPage = lazy(() => import('@/pages/AdminWithdrawalsPage').then((m) => ({ default: m.AdminWithdrawalsPage })));
+const AdminVendorsPage = lazy(() => import('@/pages/AdminVendorsPage').then((m) => ({ default: m.AdminVendorsPage })));
+const AdminSocialPage = lazy(() => import('@/pages/AdminSocialPage').then((m) => ({ default: m.AdminSocialPage })));
+const AdminBroadcastPage = lazy(() => import('@/pages/AdminBroadcastPage').then((m) => ({ default: m.AdminBroadcastPage })));
+const AdminIntegrationsPage = lazy(() => import('@/pages/AdminIntegrationsPage').then((m) => ({ default: m.AdminIntegrationsPage })));
+const AdminPermissionsPage = lazy(() => import('@/pages/AdminPermissionsPage').then((m) => ({ default: m.AdminPermissionsPage })));
+const AdminSecurityPage = lazy(() => import('@/pages/AdminSecurityPage').then((m) => ({ default: m.AdminSecurityPage })));
+const AdminCleanupPage = lazy(() => import('@/pages/AdminCleanupPage').then((m) => ({ default: m.AdminCleanupPage })));
+const AdminPaymentsPage = lazy(() => import('@/pages/AdminPaymentsPage').then((m) => ({ default: m.AdminPaymentsPage })));
+
+function AdminSectionFallback() {
+  return (
+    <div className="flex items-center justify-center py-20">
+      <Loader2 className="animate-spin text-emerald-500" size={24} />
+    </div>
+  );
+}
 
 type Section =
   | 'dashboard' | 'vendors' | 'kyc' | 'orders' | 'withdrawals'
@@ -70,17 +79,26 @@ export function AdminDashboard() {
   const loadStats = async (range?: DateRangeKey) => {
     const r = range ?? dateRange;
     if (stats.vendors > 0) setRefreshing(true);
-    const { count: vendors } = await supabase.from('vendors').select('id', { count: 'exact', head: true });
-    const { count: activeVendors } = await supabase.from('vendors').select('id', { count: 'exact', head: true }).eq('status', 'active');
-    const { count: pendingKyc } = await supabase.from('vendor_kyc').select('id', { count: 'exact', head: true }).eq('status', 'pending');
-    const { count: pendingWithdrawals } = await supabase.from('withdrawals').select('id', { count: 'exact', head: true }).eq('status', 'pending');
+
+    const [
+      { count: vendors },
+      { count: activeVendors },
+      { count: pendingKyc },
+      { count: pendingWithdrawals },
+    ] = await Promise.all([
+      supabase.from('vendors').select('id', { count: 'exact', head: true }),
+      supabase.from('vendors').select('id', { count: 'exact', head: true }).eq('status', 'active'),
+      supabase.from('vendor_kyc').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      supabase.from('withdrawals').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+    ]);
 
     const startToday = new Date();
     startToday.setHours(0, 0, 0, 0);
     const { data: todayOrders } = await supabase
       .from('orders')
       .select('total, status')
-      .gte('created_at', startToday.toISOString());
+      .gte('created_at', startToday.toISOString())
+      .limit(2000);
     const ordersToday = todayOrders?.length ?? 0;
     const revenueToday = (todayOrders ?? []).filter((o) => o.status === 'delivered' || o.status === 'picked_up').reduce((s, o) => s + Number(o.total), 0);
 
@@ -91,13 +109,15 @@ export function AdminDashboard() {
       const { data: periodData, count } = await supabase
         .from('orders')
         .select('total', { count: 'exact' })
-        .gte('created_at', startDate);
+        .gte('created_at', startDate)
+        .limit(5000);
       periodOrders = count ?? 0;
       periodRevenue = (periodData ?? []).reduce((s, o) => s + Number(o.total), 0);
     } else {
       const { count } = await supabase.from('orders').select('id', { count: 'exact', head: true });
       periodOrders = count ?? 0;
-      const { data: allData } = await supabase.from('orders').select('total');
+      // Cap all-time revenue sample to avoid unbounded select
+      const { data: allData } = await supabase.from('orders').select('total').limit(5000);
       periodRevenue = (allData ?? []).reduce((s, o) => s + Number(o.total), 0);
     }
 
@@ -136,18 +156,31 @@ export function AdminDashboard() {
     loadStats(dateRange);
     loadActivity();
 
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleRefresh = () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      refreshTimer = setTimeout(() => {
+        void loadStats();
+        void loadActivity();
+      }, 1500);
+    };
+
     const channel = supabase
       .channel('admin-realtime')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'vendors' }, () => { loadStats(); loadActivity(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => { loadStats(); loadActivity(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'products' }, () => { loadActivity(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'withdrawals' }, () => { loadStats(); loadActivity(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => { loadActivity(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'vendor_kyc' }, () => { loadStats(); loadActivity(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_log' }, () => { loadActivity(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vendors' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'withdrawals' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vendor_kyc' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'activity_log' }, () => {
+        if (refreshTimer) clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(() => { void loadActivity(); }, 800);
+      })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      if (refreshTimer) clearTimeout(refreshTimer);
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const handleRangeChange = (range: DateRangeKey) => {
@@ -264,20 +297,22 @@ export function AdminDashboard() {
         <main className="p-4 lg:p-5 max-w-5xl">
           {section === 'dashboard' && <DashboardView stats={stats} recentActivity={recentActivity} dateRange={dateRange} />}
           {section === 'activity' && <ActivityView recentActivity={recentActivity} onRefresh={loadActivity} />}
-          {section === 'kyc' && <AdminKycPage />}
-          {section === 'orders' && <AdminOrdersPage />}
-          {section === 'payments' && <AdminPaymentsPage />}
-          {section === 'withdrawals' && <AdminWithdrawalsPage />}
-          {section === 'vendors' && <AdminVendorsPage />}
-          {section === 'social' && <AdminSocialPage />}
-          {section === 'broadcast' && <AdminBroadcastPage />}
-          {section === 'integrations' && <AdminIntegrationsPage />}
-          {section === 'permissions' && <AdminPermissionsPage />}
-          {section === 'security' && <AdminSecurityPage />}
-          {section === 'cleanup' && <AdminCleanupPage />}
-          {section === 'reports' && <AdminProductsPage />}
-          {section === 'top' && <AdminAnalyticsPage initialTab="sellers" />}
-          {section === 'finance' && <AdminAnalyticsPage initialTab="commission" />}
+          <Suspense fallback={<AdminSectionFallback />}>
+            {section === 'kyc' && <AdminKycPage />}
+            {section === 'orders' && <AdminOrdersPage />}
+            {section === 'payments' && <AdminPaymentsPage />}
+            {section === 'withdrawals' && <AdminWithdrawalsPage />}
+            {section === 'vendors' && <AdminVendorsPage />}
+            {section === 'social' && <AdminSocialPage />}
+            {section === 'broadcast' && <AdminBroadcastPage />}
+            {section === 'integrations' && <AdminIntegrationsPage />}
+            {section === 'permissions' && <AdminPermissionsPage />}
+            {section === 'security' && <AdminSecurityPage />}
+            {section === 'cleanup' && <AdminCleanupPage />}
+            {section === 'reports' && <AdminProductsPage />}
+            {section === 'top' && <AdminAnalyticsPage initialTab="sellers" />}
+            {section === 'finance' && <AdminAnalyticsPage initialTab="commission" />}
+          </Suspense>
         </main>
       </div>
       <div className="text-center text-xs text-slate-400 py-3 px-4">

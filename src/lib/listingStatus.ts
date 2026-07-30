@@ -10,11 +10,11 @@ export type ListingDisplayStatus =
   | 'sold';
 
 export const LISTING_STATUS_LABELS: Record<ListingDisplayStatus, string> = {
-  pending_payment: 'Pending Payment',
-  pending_review: 'Pending Review',
-  active: 'Active',
-  rejected: 'Rejected',
-  expired: 'Expired',
+  pending_payment: 'An Atant Peman',
+  pending_review: 'An Atant Revizyon',
+  active: 'Aktif',
+  rejected: 'Rejte',
+  expired: 'Ekspire',
   sold: 'Vann/Lwe',
 };
 

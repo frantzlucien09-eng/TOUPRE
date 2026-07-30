@@ -42,11 +42,11 @@ const STATUS_FILTERS_ALL: { key: StatusFilter; label: string }[] = [
 
 const STATUS_FILTERS_CLASSIFIED: { key: StatusFilter; label: string }[] = [
   { key: 'all', label: 'Tout Anons' },
-  { key: 'pending_payment', label: 'Pending Payment' },
-  { key: 'pending_review', label: 'Pending Review' },
-  { key: 'active', label: 'Active' },
-  { key: 'rejected', label: 'Rejected' },
-  { key: 'expired', label: 'Expired' },
+  { key: 'pending_payment', label: 'An Atant Peman' },
+  { key: 'pending_review', label: 'An Atant Revizyon' },
+  { key: 'active', label: 'Aktif' },
+  { key: 'rejected', label: 'Rejte' },
+  { key: 'expired', label: 'Ekspire' },
 ];
 
 const STATUS_STYLES: Record<string, string> = {

@@ -23,7 +23,7 @@ export const PAYMENT_STATUS_LABELS: Record<string, string> = {
   processing: 'Ap Trete',
   requires_action: 'Aksyon Nesesè',
   authorized: 'Otorize',
-  captured: 'Capture',
+  captured: 'Kapti',
   paid: 'Peye',
   failed: 'Echwe',
   cancelled: 'Anile',

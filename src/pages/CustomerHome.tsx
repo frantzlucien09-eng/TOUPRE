@@ -10,7 +10,6 @@ import { formatHTG } from '@/lib/format';
 import { STATUS_LABELS_CUSTOMER, STATUS_STYLES } from '@/lib/orderStatus';
 import { isAdCategory } from '@/lib/categories';
 import { filterPublicCatalogProducts } from '@/lib/classifiedRules';
-import { softExpireListingIfNeeded } from '@/lib/listingActions';
 
 const SOCIAL_ICONS: Record<string, { icon: typeof Globe; bg: string }> = {
   instagram: { icon: Instagram, bg: 'bg-gradient-to-br from-amber-400 via-pink-500 to-purple-600' },
@@ -44,15 +43,8 @@ export function CustomerHome() {
         .order('created_at', { ascending: false })
         .limit(40);
       const raw = (prods as CatalogProduct[]) ?? [];
-      const reconciled = await Promise.all(
-        raw.map(async (p) => {
-          if (!isAdCategory(p.category)) return p;
-          const updated = await softExpireListingIfNeeded(p);
-          return { ...p, ...updated, vendor: p.vendor };
-        })
-      );
-      // Classifieds: only live approved ads; physical goods unchanged
-      setProducts(filterPublicCatalogProducts(reconciled).slice(0, 12));
+      // Filter only — never mutate listings from the customer feed
+      setProducts(filterPublicCatalogProducts(raw).slice(0, 12));
 
       const { data: ords } = await supabase
         .from('orders')
