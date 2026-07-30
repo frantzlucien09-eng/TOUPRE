@@ -74,7 +74,7 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
         })
         .eq('id', vendor.id);
 
-      toast('Demann peman anrejistre. Anons la rete Pending Payment jiskaske admin verifye.');
+      toast('Demann peman anrejistre. Anons la rete an atant jiskaske admin verifye frè a.');
       onPaid();
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Erè, eseye ankò', 'error');
@@ -89,18 +89,20 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2.5">
           <AlertTriangle size={20} className="text-amber-600 shrink-0 mt-0.5" />
           <p className="text-xs text-amber-800 leading-relaxed">
-            Pou pibliye yon anons {category === 'kay' ? 'Kay' : 'Machin'}, w ap peye{' '}
-            <b>{formatHTG(fee)}</b> pa MonCash. Sa a se yon frè anons sèlman —{' '}
-            <b>PA</b> yon vant sou TOUPRE. Achte/lwe fèt dirèkteman ak kliyan (Contact Seller).
-            Anons la pa piblik jiskaske peman verifye epi admin apwouve.
+            Pou pibliye yon anons {category === 'kay' ? 'Kay' : 'Machin'}, frè a se{' '}
+            <b>{formatHTG(fee)}</b> (MonCash). Soumèt demann peman an —{' '}
+            <b>MonCash poko konekte otomatikman</b>; admin ap verifye peman an maniyèlman.
+            Sa a se yon frè anons sèlman — <b>PA</b> yon vant sou TOUPRE. Achte/lwe fèt
+            dirèkteman ak kliyan (Contact Seller). Anons la pa piblik jiskaske peman verifye
+            epi admin apwouve.
           </p>
         </div>
 
         <div className="bg-slate-50 rounded-xl p-3 space-y-1.5 text-sm">
           <Row label="Frè piblisite" value={formatHTG(fee)} />
           <Row label="Dire anons" value={`${durationDays} jou`} />
-          <Row label="Metòd peman" value="MonCash" />
-          <Row label="Apre peman" value="Pending Review" />
+          <Row label="Metòd peman" value="MonCash (verifye maniyèl)" />
+          <Row label="Apre soumisyon" value="An Atant Revizyon" />
         </div>
 
         <div>
@@ -135,7 +137,7 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
             className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-60"
           >
             {loading || !settings ? <Loader2 size={18} className="animate-spin" /> : null}
-            Voye peman {formatHTG(fee)}
+            Voye demann {formatHTG(fee)}
           </button>
         </div>
       </div>

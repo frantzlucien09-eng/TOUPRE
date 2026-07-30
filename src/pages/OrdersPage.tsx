@@ -32,7 +32,8 @@ export function OrdersPage({ initialFilter, initialTab, onOpenOrder }: { initial
       .from('orders')
       .select('*, customer:customers(full_name, phone, address, department, city)')
       .eq('vendor_id', vendor.id)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(100);
     setOrders((data ?? []) as unknown as Order[]);
     setLoading(false);
   };
