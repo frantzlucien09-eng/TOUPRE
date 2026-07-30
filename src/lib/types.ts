@@ -133,15 +133,20 @@ export type OrderItem = {
 
 export type Order = {
   id: string;
+  order_number?: string | null;
   customer_id: string | null;
   vendor_id: string;
   items: OrderItem[];
+  subtotal?: number;
+  shipping_cost?: number;
   total: number;
   delivery_type: 'delivery' | 'pickup';
   status: OrderStatus;
   reject_reason: string | null;
   delivery_note: string | null;
   delivery_proof_url: string | null;
+  shipping_address?: Record<string, unknown> | null;
+  notes?: string | null;
   payment_status: 'pending' | 'paid' | 'unpaid' | null;
   created_at: string;
   updated_at: string;
@@ -207,6 +212,9 @@ export type Notification = {
   title: string;
   body: string | null;
   read: boolean;
+  is_read?: boolean;
+  read_at?: string | null;
+  data?: Record<string, unknown> | null;
   created_at: string;
 };
 

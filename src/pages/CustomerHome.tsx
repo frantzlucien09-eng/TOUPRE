@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
@@ -8,9 +8,16 @@ import { ProductCard } from '@/components/ProductCard';
 import { CustomerProductDetail } from '@/pages/CustomerProductDetail';
 import { CustomerCartPage } from '@/pages/CustomerCartPage';
 import { CustomerCheckoutPage } from '@/pages/CustomerCheckoutPage';
+import { CustomerOrderDetail } from '@/pages/CustomerOrderDetail';
+import { CustomerMessagesPage } from '@/pages/CustomerMessagesPage';
 import { getCartCount } from '@/lib/cart';
-import { Package, MapPin, Phone, Loader2, LogOut, ShoppingBag, Store, MessageCircle, Bell, ExternalLink, Instagram, Music2, Facebook, Globe, ShoppingCart } from 'lucide-react';
-import type { Order, Product, Vendor as VendorType, SocialPlatform, Notification } from '@/lib/types';
+import { listFavoriteProducts, toggleFavorite } from '@/lib/favorites';
+import { CATEGORIES, CATEGORY_ICON, CATEGORY_LABEL } from '@/lib/categories';
+import {
+  Package, MapPin, Phone, Loader2, LogOut, Store, MessageCircle, Bell,
+  ExternalLink, Instagram, Music2, Facebook, Globe, ShoppingCart, Search, Heart, User,
+} from 'lucide-react';
+import type { Order, Product, Vendor as VendorType, SocialPlatform, Notification, ProductCategory, Customer } from '@/lib/types';
 import { formatHTG } from '@/lib/format';
 import { STATUS_LABELS_CUSTOMER, STATUS_STYLES } from '@/lib/orderStatus';
 
@@ -21,7 +28,8 @@ const SOCIAL_ICONS: Record<string, { icon: typeof Globe; bg: string }> = {
   globe: { icon: Globe, bg: 'bg-slate-600' },
 };
 
-type Screen = 'main' | 'product' | 'cart' | 'checkout';
+type Screen = 'main' | 'product' | 'cart' | 'checkout' | 'orderDetail' | 'wishlist';
+type Tab = 'home' | 'orders' | 'messages' | 'profile';
 
 export function CustomerHome() {
   const { user, customer, signOut } = useAuth();
@@ -29,49 +37,100 @@ export function CustomerHome() {
   const [products, setProducts] = useState<Product[]>([]);
   const [orders, setOrders] = useState<(Order & { vendor?: Pick<VendorType, 'business_name'> | null })[]>([]);
   const [socials, setSocials] = useState<SocialPlatform[]>([]);
+  const [wishlist, setWishlist] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [notifOpen, setNotifOpen] = useState(false);
-  const [tab, setTab] = useState<'home' | 'orders' | 'messages' | 'profile'>('home');
+  const [tab, setTab] = useState<Tab>('home');
   const [screen, setScreen] = useState<Screen>('main');
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [cartCount, setCartCount] = useState(0);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<ProductCategory | null>(null);
+  const [msgVendorId, setMsgVendorId] = useState<string | null>(null);
+  const [msgProductId, setMsgProductId] = useState<string | null>(null);
+  const [profileDraft, setProfileDraft] = useState({
+    full_name: '',
+    phone: '',
+    department: '',
+    city: '',
+    address: '',
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [localCustomer, setLocalCustomer] = useState<Customer | null>(null);
 
-  const refreshCartCount = async () => {
+  useEffect(() => {
+    if (!customer) return;
+    setLocalCustomer(customer);
+    setProfileDraft({
+      full_name: customer.full_name ?? '',
+      phone: customer.phone ?? '',
+      department: customer.department ?? '',
+      city: customer.city ?? '',
+      address: customer.address ?? '',
+    });
+  }, [customer]);
+
+  const refreshCartCount = useCallback(async () => {
     if (!user) return;
     try {
       setCartCount(await getCartCount(user.id));
     } catch {
       // cart table may be unavailable until migration applied
     }
-  };
+  }, [user]);
 
-  const reloadOrders = async () => {
+  const reloadOrders = useCallback(async () => {
     if (!user) return;
     const { data: ords } = await supabase
       .from('orders')
       .select('*, vendor:vendors(business_name)')
       .eq('customer_id', user.id)
       .order('created_at', { ascending: false })
-      .limit(10);
+      .limit(50);
     setOrders((ords as (Order & { vendor?: Pick<VendorType, 'business_name'> | null })[]) ?? []);
-  };
+  }, [user]);
+
+  const reloadWishlist = useCallback(async () => {
+    if (!user) return;
+    try {
+      setWishlist(await listFavoriteProducts(user.id));
+    } catch {
+      setWishlist([]);
+    }
+  }, [user]);
+
+  const loadProducts = useCallback(async (q: string, cat: ProductCategory | null) => {
+    let query = supabase
+      .from('products')
+      .select('*')
+      .eq('active', true)
+      .order('created_at', { ascending: false })
+      .limit(48);
+
+    if (cat) query = query.eq('category', cat);
+    if (q.trim()) query = query.ilike('name', `%${q.trim()}%`);
+
+    const { data: prods } = await query;
+    setProducts((prods as Product[]) ?? []);
+
+    if (q.trim() && prods && prods.length > 0) {
+      for (const p of (prods as Product[]).slice(0, 8)) {
+        void supabase.rpc('increment_product_search', { p_product_id: p.id });
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) return;
     const load = async () => {
-      const { data: prods } = await supabase
-        .from('products')
-        .select('*')
-        .eq('active', true)
-        .order('created_at', { ascending: false })
-        .limit(24);
-      setProducts((prods as Product[]) ?? []);
-
+      await loadProducts('', null);
       await reloadOrders();
       await refreshCartCount();
+      await reloadWishlist();
       setLoading(false);
     };
-    load();
+    void load();
 
     const loadSocials = async () => {
       const { data } = await supabase
@@ -81,19 +140,86 @@ export function CustomerHome() {
         .order('sort_order', { ascending: true });
       setSocials((data ?? []) as SocialPlatform[]);
     };
-    loadSocials();
+    void loadSocials();
     const channel = supabase
       .channel('customer-social-platforms')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'social_platforms' }, loadSocials)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'social_platforms' }, () => { void loadSocials(); })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+    return () => { void supabase.removeChannel(channel); };
+  }, [user, loadProducts, reloadOrders, refreshCartCount, reloadWishlist]);
+
+  useEffect(() => {
+    if (!user || loading) return;
+    const t = window.setTimeout(() => {
+      void loadProducts(searchQuery, categoryFilter);
+    }, 250);
+    return () => window.clearTimeout(t);
+  }, [searchQuery, categoryFilter, user, loading, loadProducts]);
+
+  const openProduct = (id: string) => {
+    setSelectedProductId(id);
+    setScreen('product');
+  };
+
+  const openMessageVendor = (vendorId: string, productId?: string) => {
+    setMsgVendorId(vendorId);
+    setMsgProductId(productId ?? null);
+    setScreen('main');
+    setSelectedProductId(null);
+    setSelectedOrderId(null);
+    setTab('messages');
+  };
 
   const handleSignOut = async () => {
     await signOut();
     toast('Ou dekonekte');
   };
+
+  const saveProfile = async () => {
+    if (!user || !localCustomer) return;
+    if (!profileDraft.full_name.trim()) {
+      toast('Antre non ou', 'error');
+      return;
+    }
+    setProfileSaving(true);
+    const payload = {
+      full_name: profileDraft.full_name.trim(),
+      phone: profileDraft.phone.trim() || null,
+      department: profileDraft.department.trim() || null,
+      city: profileDraft.city.trim() || null,
+      address: profileDraft.address.trim() || null,
+    };
+    const { data, error } = await supabase
+      .from('customers')
+      .update(payload)
+      .eq('id', localCustomer.id)
+      .select('*')
+      .maybeSingle();
+    setProfileSaving(false);
+    if (error) {
+      toast(error.message || 'Erè, eseye ankò', 'error');
+      return;
+    }
+    if (data) setLocalCustomer(data as Customer);
+    toast('Profild mete ajou');
+  };
+
+  const removeFromWishlist = async (productId: string) => {
+    if (!user) return;
+    try {
+      await toggleFavorite(user.id, productId);
+      await reloadWishlist();
+      toast('Retire nan favori');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erè', 'error');
+    }
+  };
+
+  const filteredLabel = useMemo(() => {
+    if (categoryFilter) return CATEGORY_LABEL[categoryFilter];
+    if (searchQuery.trim()) return `Rezilta pou “${searchQuery.trim()}”`;
+    return 'Pwodwi disponib';
+  }, [categoryFilter, searchQuery]);
 
   if (loading) {
     return (
@@ -110,7 +236,8 @@ export function CustomerHome() {
         <CustomerProductDetail
           productId={selectedProductId}
           onBack={() => { setScreen('main'); setSelectedProductId(null); }}
-          onAddedToCart={() => { refreshCartCount(); }}
+          onAddedToCart={() => { void refreshCartCount(); }}
+          onMessageVendor={(vendorId, productId) => openMessageVendor(vendorId, productId)}
         />
       </div>
     );
@@ -120,7 +247,7 @@ export function CustomerHome() {
     return (
       <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative">
         <CustomerCartPage
-          onBack={() => { setScreen('main'); refreshCartCount(); }}
+          onBack={() => { setScreen('main'); void refreshCartCount(); }}
           onCheckout={() => setScreen('checkout')}
         />
       </div>
@@ -133,8 +260,8 @@ export function CustomerHome() {
         <CustomerCheckoutPage
           onBack={() => setScreen('cart')}
           onSuccess={() => {
-            refreshCartCount();
-            reloadOrders();
+            void refreshCartCount();
+            void reloadOrders();
             setTab('orders');
             setScreen('main');
           }}
@@ -143,7 +270,59 @@ export function CustomerHome() {
     );
   }
 
-  const displayName = customer?.full_name || user?.email?.split('@')[0] || 'Kliyan';
+  if (screen === 'orderDetail' && selectedOrderId) {
+    return (
+      <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative">
+        <CustomerOrderDetail
+          orderId={selectedOrderId}
+          onBack={() => { setScreen('main'); setSelectedOrderId(null); void reloadOrders(); }}
+          onMessageVendor={(vendorId) => openMessageVendor(vendorId)}
+        />
+      </div>
+    );
+  }
+
+  if (screen === 'wishlist') {
+    return (
+      <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative pb-6">
+        <div className="sticky top-0 z-20 bg-white/95 backdrop-blur border-b border-slate-100 px-4 py-3 flex items-center gap-3">
+          <button
+            onClick={() => setScreen('main')}
+            className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center active:scale-90 transition"
+            aria-label="Retounen"
+          >
+            <Heart size={18} className="text-rose-500" />
+          </button>
+          <h1 className="font-bold text-slate-900 text-base flex-1">Favori mwen</h1>
+        </div>
+        <div className="px-4 py-4">
+          {wishlist.length === 0 ? (
+            <div className="text-center py-12 text-sm text-slate-400">
+              Pa gen favori ankò. Tape kè a sou yon pwodwi.
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {wishlist.map((p) => (
+                <div key={p.id} className="relative">
+                  <ProductCard product={p} onClick={() => openProduct(p.id)} />
+                  <button
+                    type="button"
+                    onClick={() => void removeFromWishlist(p.id)}
+                    className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/90 border border-slate-100 flex items-center justify-center text-rose-500 shadow-sm"
+                    aria-label="Retire"
+                  >
+                    <Heart size={14} className="fill-rose-500" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const displayName = localCustomer?.full_name || customer?.full_name || user?.email?.split('@')[0] || 'Kliyan';
 
   return (
     <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative pb-20">
@@ -153,6 +332,18 @@ export function CustomerHome() {
           <span className="font-bold text-slate-900 text-sm">TOUPRE</span>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => { void reloadWishlist(); setScreen('wishlist'); }}
+            className="relative w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 active:scale-90 transition"
+            aria-label="Favori"
+          >
+            <Heart size={18} />
+            {wishlist.length > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">
+                {wishlist.length > 9 ? '9+' : wishlist.length}
+              </span>
+            )}
+          </button>
           <button
             onClick={() => setScreen('cart')}
             className="relative w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 active:scale-90 transition"
@@ -178,22 +369,59 @@ export function CustomerHome() {
             <p className="text-sm text-slate-500 mt-1">Mache TOUPRE — chache pwodwi, pase kòmand, swiv livrezon.</p>
           </div>
 
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Chache yon pwodwi..."
+              className="w-full pl-9 pr-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+            <button
+              type="button"
+              onClick={() => setCategoryFilter(null)}
+              className={`shrink-0 px-3 py-2 rounded-xl text-xs font-semibold border transition ${
+                !categoryFilter ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-100'
+              }`}
+            >
+              Tout
+            </button>
+            {CATEGORIES.map((cat) => (
+              <button
+                key={cat.key}
+                type="button"
+                onClick={() => setCategoryFilter(cat.key === categoryFilter ? null : cat.key)}
+                className={`shrink-0 px-3 py-2 rounded-xl text-xs font-semibold border transition flex items-center gap-1 ${
+                  categoryFilter === cat.key ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-600 border-slate-100'
+                }`}
+              >
+                <span>{CATEGORY_ICON[cat.key]}</span>
+                <span>{cat.label.split(' / ')[0]}</span>
+              </button>
+            ))}
+          </div>
+
           <div className="grid grid-cols-4 gap-2">
-            {[
-              { icon: Store, label: 'Kay' },
-              { icon: Package, label: 'Machin' },
-              { icon: ShoppingBag, label: 'Manje' },
-              { icon: Store, label: 'Rad' },
-            ].map((cat) => (
-              <div key={cat.label} className="flex flex-col items-center gap-1.5 py-3 rounded-xl bg-white border border-slate-100">
-                <cat.icon size={20} className="text-emerald-600" />
-                <span className="text-[11px] text-slate-600 font-medium">{cat.label}</span>
-              </div>
+            {CATEGORIES.slice(0, 4).map((cat) => (
+              <button
+                key={cat.key}
+                type="button"
+                onClick={() => setCategoryFilter(cat.key === categoryFilter ? null : cat.key)}
+                className={`flex flex-col items-center gap-1.5 py-3 rounded-xl border transition ${
+                  categoryFilter === cat.key ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-100'
+                }`}
+              >
+                <Store size={20} className="text-emerald-600" />
+                <span className="text-[11px] text-slate-600 font-medium">{cat.label.split(' / ')[0]}</span>
+              </button>
             ))}
           </div>
 
           <div>
-            <h2 className="font-bold text-slate-900 text-sm mb-2">Pwodwi disponib</h2>
+            <h2 className="font-bold text-slate-900 text-sm mb-2">{filteredLabel}</h2>
             {products.length === 0 ? (
               <div className="text-center py-8 text-sm text-slate-400">
                 Pa gen pwodwi disponib kounye a.
@@ -204,10 +432,7 @@ export function CustomerHome() {
                   <ProductCard
                     key={p.id}
                     product={p}
-                    onClick={() => {
-                      setSelectedProductId(p.id);
-                      setScreen('product');
-                    }}
+                    onClick={() => openProduct(p.id)}
                   />
                 ))}
               </div>
@@ -256,7 +481,12 @@ export function CustomerHome() {
               const statusLabel = STATUS_LABELS_CUSTOMER[o.status] ?? o.status;
               const statusColor = STATUS_STYLES[o.status] ?? 'bg-slate-100 text-slate-600';
               return (
-                <div key={o.id} className="rounded-xl bg-white border border-slate-100 p-3">
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => { setSelectedOrderId(o.id); setScreen('orderDetail'); }}
+                  className="w-full text-left rounded-xl bg-white border border-slate-100 p-3 active:scale-95 transition"
+                >
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs text-slate-500">{o.vendor?.business_name ?? 'Vandè'}</span>
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusColor}`}>
@@ -265,9 +495,10 @@ export function CustomerHome() {
                   </div>
                   <p className="text-sm font-bold text-slate-900">{formatHTG(o.total)}</p>
                   <p className="text-[11px] text-slate-400 mt-1">
+                    {o.order_number ? `${o.order_number} · ` : ''}
                     {o.payment_status === 'paid' ? 'Peye' : 'Pa peye'} · {new Date(o.created_at).toLocaleString('fr-FR')}
                   </p>
-                </div>
+                </button>
               );
             })
           )}
@@ -275,37 +506,77 @@ export function CustomerHome() {
       )}
 
       {tab === 'messages' && (
-        <div className="px-4 py-12 text-center text-sm text-slate-400">
-          <MessageCircle size={32} className="mx-auto mb-2 text-slate-300" />
-          Mesaj ou yo ap parèt isit la.
-        </div>
+        <CustomerMessagesPage
+          initialVendorId={msgVendorId}
+          initialProductId={msgProductId}
+          onClearInitial={() => { setMsgVendorId(null); setMsgProductId(null); }}
+        />
       )}
 
       {tab === 'profile' && (
         <div className="px-4 py-4 space-y-4">
           <h2 className="font-bold text-slate-900 text-lg">Profild mwen</h2>
           <div className="rounded-xl bg-white border border-slate-100 p-4 space-y-3">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-slate-400 w-20">Non:</span>
-              <span className="text-slate-900 font-medium">{displayName}</span>
+            <label className="block">
+              <span className="text-xs text-slate-500">Non konplè</span>
+              <input
+                value={profileDraft.full_name}
+                onChange={(e) => setProfileDraft((d) => ({ ...d, full_name: e.target.value }))}
+                className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              />
+            </label>
+            <label className="block">
+              <span className="text-xs text-slate-500 flex items-center gap-1"><Phone size={12} /> Telefòn</span>
+              <input
+                value={profileDraft.phone}
+                onChange={(e) => setProfileDraft((d) => ({ ...d, phone: e.target.value }))}
+                className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                placeholder="+509 ..."
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="block">
+                <span className="text-xs text-slate-500">Depatman</span>
+                <input
+                  value={profileDraft.department}
+                  onChange={(e) => setProfileDraft((d) => ({ ...d, department: e.target.value }))}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </label>
+              <label className="block">
+                <span className="text-xs text-slate-500">Vil</span>
+                <input
+                  value={profileDraft.city}
+                  onChange={(e) => setProfileDraft((d) => ({ ...d, city: e.target.value }))}
+                  className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </label>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-slate-400 w-20">Imèl:</span>
-              <span className="text-slate-900 font-medium">{user?.email ?? '—'}</span>
+            <label className="block">
+              <span className="text-xs text-slate-500 flex items-center gap-1"><MapPin size={12} /> Adrès</span>
+              <textarea
+                value={profileDraft.address}
+                onChange={(e) => setProfileDraft((d) => ({ ...d, address: e.target.value }))}
+                rows={2}
+                className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 resize-none"
+              />
+            </label>
+            <div className="flex items-center gap-2 text-sm pt-1">
+              <span className="text-slate-400 w-16">Imèl:</span>
+              <span className="text-slate-900 font-medium truncate">{user?.email ?? '—'}</span>
             </div>
-            <div className="flex items-center gap-2 text-sm">
-              <Phone size={14} className="text-slate-400" />
-              <span className="text-slate-900 font-medium">{customer?.phone ?? 'Pa gen telefòn'}</span>
-            </div>
-            {customer?.address && (
-              <div className="flex items-center gap-2 text-sm">
-                <MapPin size={14} className="text-slate-400" />
-                <span className="text-slate-900 font-medium">{customer.address}</span>
-              </div>
-            )}
+            <button
+              type="button"
+              onClick={() => void saveProfile()}
+              disabled={profileSaving}
+              className="w-full py-2.5 rounded-xl bg-emerald-600 text-white font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-50 active:scale-95 transition"
+            >
+              {profileSaving ? <Loader2 size={16} className="animate-spin" /> : null}
+              Sove chanjman
+            </button>
           </div>
 
-          {customer && !customer.phone && (
+          {!profileDraft.phone && (
             <div className="rounded-xl bg-amber-50 border border-amber-200 p-3">
               <p className="text-xs text-amber-700">Ajoute nimewo telefòn ou pou w ka resevwa apèl vandè yo.</p>
             </div>
@@ -327,14 +598,14 @@ export function CustomerHome() {
 
       <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-slate-100 px-2 py-1.5 flex items-center justify-around z-10">
         {[
-          { key: 'home', icon: Store, label: 'Akèy' },
-          { key: 'orders', icon: Package, label: 'Kòmand' },
-          { key: 'messages', icon: MessageCircle, label: 'Mesaj' },
-          { key: 'profile', icon: ShoppingBag, label: 'Profild' },
+          { key: 'home' as const, icon: Store, label: 'Akèy' },
+          { key: 'orders' as const, icon: Package, label: 'Kòmand' },
+          { key: 'messages' as const, icon: MessageCircle, label: 'Mesaj' },
+          { key: 'profile' as const, icon: User, label: 'Profild' },
         ].map((item) => (
           <button
             key={item.key}
-            onClick={() => setTab(item.key as typeof tab)}
+            onClick={() => { setTab(item.key); setScreen('main'); }}
             className={`flex flex-col items-center gap-0.5 px-3 py-1.5 rounded-lg transition ${tab === item.key ? 'text-emerald-600' : 'text-slate-400'}`}
           >
             <item.icon size={20} />
@@ -362,31 +633,70 @@ function CustomerNotifications({ userId }: { userId: string }) {
   const [notifs, setNotifs] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const load = async () => {
-      const { data } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(20);
-      setNotifs(data ?? []);
-      setLoading(false);
-    };
-    load();
+  const load = useCallback(async () => {
+    const { data } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(30);
+    setNotifs((data ?? []) as Notification[]);
+    setLoading(false);
   }, [userId]);
+
+  useEffect(() => {
+    void load();
+    const channel = supabase
+      .channel(`customer-notifs-${userId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` }, () => { void load(); })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [userId, load]);
+
+  const markRead = async (id: string) => {
+    await supabase
+      .from('notifications')
+      .update({ read: true, is_read: true, read_at: new Date().toISOString() })
+      .eq('id', id);
+    setNotifs((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+  };
+
+  const markAllRead = async () => {
+    await supabase
+      .from('notifications')
+      .update({ read: true, is_read: true, read_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('read', false);
+    setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
+  };
 
   if (loading) return <div className="text-center py-8"><Loader2 className="animate-spin text-slate-300 mx-auto" size={20} /></div>;
   if (notifs.length === 0) return <p className="text-sm text-slate-400 text-center py-8">Pa gen notifikasyon.</p>;
 
+  const unread = notifs.some((n) => !n.read);
+
   return (
     <div className="space-y-2">
+      {unread && (
+        <button
+          type="button"
+          onClick={() => void markAllRead()}
+          className="w-full mb-2 text-xs font-semibold text-emerald-700 py-2 rounded-lg bg-emerald-50 border border-emerald-100"
+        >
+          Make tout yo li
+        </button>
+      )}
       {notifs.map((n) => (
-        <div key={n.id} className={`rounded-lg p-3 border ${n.read ? 'bg-white border-slate-100' : 'bg-emerald-50 border-emerald-100'}`}>
+        <button
+          key={n.id}
+          type="button"
+          onClick={() => { if (!n.read) void markRead(n.id); }}
+          className={`w-full text-left rounded-lg p-3 border ${n.read ? 'bg-white border-slate-100' : 'bg-emerald-50 border-emerald-100'}`}
+        >
           <p className="text-sm font-semibold text-slate-900">{n.title}</p>
           {n.body && <p className="text-xs text-slate-500 mt-0.5">{n.body}</p>}
           <p className="text-[10px] text-slate-400 mt-1">{new Date(n.created_at).toLocaleString('fr-FR')}</p>
-        </div>
+        </button>
       ))}
     </div>
   );

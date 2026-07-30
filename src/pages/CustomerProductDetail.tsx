@@ -3,18 +3,20 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
 import { addToCart } from '@/lib/cart';
+import { isFavorite, toggleFavorite } from '@/lib/favorites';
 import { formatHTG } from '@/lib/format';
 import { CATEGORY_ICON, CATEGORY_LABEL, isAdCategory } from '@/lib/categories';
 import type { Product, Vendor } from '@/lib/types';
-import { ArrowLeft, Image as ImageIcon, Loader2, ShoppingCart, Store } from 'lucide-react';
+import { ArrowLeft, Heart, Image as ImageIcon, Loader2, MessageCircle, ShoppingCart, Store } from 'lucide-react';
 
 type Props = {
   productId: string;
   onBack: () => void;
   onAddedToCart?: () => void;
+  onMessageVendor?: (vendorId: string, productId: string) => void;
 };
 
-export function CustomerProductDetail({ productId, onBack, onAddedToCart }: Props) {
+export function CustomerProductDetail({ productId, onBack, onAddedToCart, onMessageVendor }: Props) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [product, setProduct] = useState<Product | null>(null);
@@ -22,6 +24,8 @@ export function CustomerProductDetail({ productId, onBack, onAddedToCart }: Prop
   const [loading, setLoading] = useState(true);
   const [adding, setAdding] = useState(false);
   const [photoIdx, setPhotoIdx] = useState(0);
+  const [favorited, setFavorited] = useState(false);
+  const [favBusy, setFavBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,14 +45,21 @@ export function CustomerProductDetail({ productId, onBack, onAddedToCart }: Prop
       const row = data as Product & { vendor?: typeof vendor };
       setProduct(row);
       setVendor(row.vendor ?? null);
-      const photos = row.photos ?? [];
       setPhotoIdx(row.cover_index ?? 0);
-      if (photos.length === 0 && row.image_url) setPhotoIdx(0);
       setLoading(false);
+      void supabase.rpc('increment_product_view', { p_product_id: productId });
     };
     load();
     return () => { cancelled = true; };
   }, [productId, toast]);
+
+  useEffect(() => {
+    if (!user?.id || !productId) {
+      setFavorited(false);
+      return;
+    }
+    void isFavorite(user.id, productId).then(setFavorited).catch(() => setFavorited(false));
+  }, [user?.id, productId]);
 
   const handleAdd = async () => {
     if (!user || !product) return;
@@ -73,6 +84,20 @@ export function CustomerProductDetail({ productId, onBack, onAddedToCart }: Prop
       toast(err instanceof Error ? err.message : 'Erè, eseye ankò', 'error');
     } finally {
       setAdding(false);
+    }
+  };
+
+  const handleFavorite = async () => {
+    if (!user || !product) return;
+    setFavBusy(true);
+    try {
+      const next = await toggleFavorite(user.id, product.id);
+      setFavorited(next);
+      toast(next ? 'Ajoute nan favori' : 'Retire nan favori');
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erè favori', 'error');
+    } finally {
+      setFavBusy(false);
     }
   };
 
@@ -104,6 +129,17 @@ export function CustomerProductDetail({ productId, onBack, onAddedToCart }: Prop
           <ArrowLeft size={18} />
         </button>
         <h1 className="font-bold text-slate-900 text-sm truncate flex-1">{product.name}</h1>
+        {user && (
+          <button
+            type="button"
+            onClick={() => void handleFavorite()}
+            disabled={favBusy}
+            className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 active:scale-90 transition disabled:opacity-50"
+            aria-label={favorited ? 'Retire nan favori' : 'Ajoute nan favori'}
+          >
+            <Heart size={18} className={favorited ? 'fill-rose-500 text-rose-500' : ''} />
+          </button>
+        )}
       </div>
 
       <div className="px-4 pt-4 space-y-4">
@@ -150,7 +186,7 @@ export function CustomerProductDetail({ productId, onBack, onAddedToCart }: Prop
         {vendor && (
           <div className="flex items-center gap-2 text-sm text-slate-600 bg-white border border-slate-100 rounded-xl p-3">
             <Store size={16} className="text-emerald-600" />
-            <div className="min-w-0">
+            <div className="min-w-0 flex-1">
               <p className="font-semibold text-slate-900 truncate">{vendor.business_name}</p>
               {(vendor.city || vendor.department) && (
                 <p className="text-xs text-slate-500">{[vendor.city, vendor.department].filter(Boolean).join(', ')}</p>
@@ -166,15 +202,27 @@ export function CustomerProductDetail({ productId, onBack, onAddedToCart }: Prop
           </div>
         )}
 
-        <button
-          type="button"
-          disabled={!canAdd || adding}
-          onClick={handleAdd}
-          className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
-        >
-          {adding ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
-          {canAdd ? 'Ajoute nan panye' : 'Pa disponib pou achte'}
-        </button>
+        <div className="space-y-2">
+          <button
+            type="button"
+            disabled={!canAdd || adding}
+            onClick={handleAdd}
+            className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
+          >
+            {adding ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
+            {canAdd ? 'Ajoute nan panye' : 'Pa disponib pou achte'}
+          </button>
+          {vendor && onMessageVendor && (
+            <button
+              type="button"
+              onClick={() => onMessageVendor(vendor.id, product.id)}
+              className="w-full py-3 rounded-xl border border-emerald-200 text-emerald-700 font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition"
+            >
+              <MessageCircle size={18} />
+              Kontakte vandè
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
