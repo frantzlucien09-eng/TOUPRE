@@ -84,7 +84,7 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
         const result = await initiatePaymentWithProvider({
           amount: fee,
           provider: 'moncash',
-          purpose: 'ad_listing',
+          purpose: 'ad_fee',
           adPaymentId: adPay.id,
           vendorId: vendor.id,
           metadata: { product_id: productId, category, moncash_phone: phone.trim() },

@@ -3,7 +3,6 @@ import type {
   PaymentProviderAdapter,
   ProviderInitiateInput,
   ProviderInitiateResult,
-  ProviderWebhookVerificationInput,
   ProviderWebhookVerificationResult,
 } from './providers';
 import { supabase } from '../supabase';
@@ -72,9 +71,7 @@ export class MonCashPaymentProvider implements PaymentProviderAdapter {
     };
   }
 
-  async verifyWebhook(
-    _input: ProviderWebhookVerificationInput
-  ): Promise<ProviderWebhookVerificationResult> {
+  async verifyWebhook(): Promise<ProviderWebhookVerificationResult> {
     // Webhook verification runs exclusively in Edge (payment-webhook).
     return {
       valid: false,
