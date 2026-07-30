@@ -7,6 +7,7 @@ import {
   loadListingFeeSettings,
   type ListingFeeSettings,
 } from '@/lib/listingSettings';
+import { initiatePaymentWithProvider, isMonCashLiveEnabled } from '@/lib/payments';
 import { formatHTG } from '@/lib/format';
 import { Modal } from './Modal';
 import { AlertTriangle, Loader2, ShieldCheck, Smartphone } from 'lucide-react';
@@ -25,6 +26,7 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
   const [phone, setPhone] = useState(vendor?.moncash_phone ?? '');
   const [loading, setLoading] = useState(false);
   const [settings, setSettings] = useState<ListingFeeSettings | null>(null);
+  const moncashLive = isMonCashLiveEnabled();
 
   useEffect(() => {
     if (!open) return;
@@ -42,19 +44,22 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
     if (!vendor) return;
     setLoading(true);
     try {
-      const { error: payError } = await supabase.from('ad_payments').insert({
-        vendor_id: vendor.id,
-        product_id: productId,
-        amount: fee,
-        category,
-        status: 'pending',
-        moncash_phone: phone.trim(),
-        paid_at: null,
-        waived: false,
-      });
+      const { data: adPay, error: payError } = await supabase
+        .from('ad_payments')
+        .insert({
+          vendor_id: vendor.id,
+          product_id: productId,
+          amount: fee,
+          category,
+          status: 'pending',
+          moncash_phone: phone.trim(),
+          paid_at: null,
+          waived: false,
+        })
+        .select('id')
+        .single();
       if (payError) throw payError;
 
-      // Keep listing unpaid / not public until admin verifies fee and approves.
       const { error: prodError } = await supabase
         .from('products')
         .update({
@@ -74,7 +79,33 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
         })
         .eq('id', vendor.id);
 
-      toast('Demann peman anrejistre. Anons la rete an atant jiskaske admin verifye frè a.');
+      if (moncashLive && adPay?.id) {
+        const origin = typeof window !== 'undefined' ? window.location.origin : '';
+        const result = await initiatePaymentWithProvider({
+          amount: fee,
+          provider: 'moncash',
+          purpose: 'ad_listing',
+          adPaymentId: adPay.id,
+          vendorId: vendor.id,
+          metadata: { product_id: productId, category, moncash_phone: phone.trim() },
+          returnUrl: `${origin}/#/payment/return`,
+          cancelUrl: `${origin}/#/`,
+        });
+        if (!result.success) {
+          throw new Error(result.error || 'MonCash initiate echwe');
+        }
+        if (result.checkoutUrl) {
+          toast('Ap mennen ou nan MonCash…');
+          window.location.href = result.checkoutUrl;
+          return;
+        }
+      }
+
+      toast(
+        moncashLive
+          ? 'Demann MonCash kreye. Si w pa redirekte, verifye nan admin.'
+          : 'Demann peman anrejistre. Anons la rete an atant jiskaske admin verifye frè a.'
+      );
       onPaid();
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Erè, eseye ankò', 'error');
@@ -90,19 +121,19 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
           <AlertTriangle size={20} className="text-amber-600 shrink-0 mt-0.5" />
           <p className="text-xs text-amber-800 leading-relaxed">
             Pou pibliye yon anons {category === 'kay' ? 'Kay' : 'Machin'}, frè a se{' '}
-            <b>{formatHTG(fee)}</b> (MonCash). Soumèt demann peman an —{' '}
-            <b>MonCash poko konekte otomatikman</b>; admin ap verifye peman an maniyèlman.
-            Sa a se yon frè anons sèlman — <b>PA</b> yon vant sou TOUPRE. Achte/lwe fèt
-            dirèkteman ak kliyan (Contact Seller). Anons la pa piblik jiskaske peman verifye
-            epi admin apwouve.
+            <b>{formatHTG(fee)}</b> via MonCash. Sa a se yon frè anons sèlman — <b>PA</b> yon vant
+            sou TOUPRE. Achte/lwe fèt dirèkteman ak kliyan (Contact Seller).
+            {moncashLive
+              ? ' W ap redirekte nan MonCash pou peye.'
+              : ' MonCash live poko aktive — demann lan ap verifye maniyèlman pa admin.'}
           </p>
         </div>
 
         <div className="bg-slate-50 rounded-xl p-3 space-y-1.5 text-sm">
           <Row label="Frè piblisite" value={formatHTG(fee)} />
           <Row label="Dire anons" value={`${durationDays} jou`} />
-          <Row label="Metòd peman" value="MonCash (verifye maniyèl)" />
-          <Row label="Apre soumisyon" value="An Atant Revizyon" />
+          <Row label="Metòd peman" value={moncashLive ? 'MonCash (live/sandbox)' : 'MonCash (verifye maniyèl)'} />
+          <Row label="Apre soumisyon" value={moncashLive ? 'Peye → Pending Review' : 'An Atant Revizyon'} />
         </div>
 
         <div>
@@ -137,7 +168,7 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
             className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-60"
           >
             {loading || !settings ? <Loader2 size={18} className="animate-spin" /> : null}
-            Voye demann {formatHTG(fee)}
+            {moncashLive ? `Peye ${formatHTG(fee)}` : `Voye demann ${formatHTG(fee)}`}
           </button>
         </div>
       </div>

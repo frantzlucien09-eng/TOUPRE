@@ -51,13 +51,37 @@ type Screen = 'main' | 'withdraw' | 'settings' | 'follow' | 'preparing' | 'deliv
 
 function Shell() {
   const route = useHashRoute();
-  if (route === 'admin') {
+  if (route === 'admin' || route.startsWith('admin/')) {
     return (
       <AdminAuthProvider>
         <Suspense fallback={<RouteFallback />}>
           <AdminShell />
         </Suspense>
       </AdminAuthProvider>
+    );
+  }
+  if (route.startsWith('legal/')) {
+    const raw = route.replace(/^legal\//, '');
+    const allowed = new Set([
+      'privacy', 'terms', 'vendor-terms', 'classified-policy', 'payment-policy', 'refund-policy',
+    ]);
+    const key = (allowed.has(raw) ? raw : 'terms') as
+      | 'privacy' | 'terms' | 'vendor-terms' | 'classified-policy' | 'payment-policy' | 'refund-policy';
+    const LegalPage = lazy(() => import('@/pages/LegalPage').then((m) => ({ default: m.LegalPage })));
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <LegalPage docKey={key} />
+      </Suspense>
+    );
+  }
+  if (route.startsWith('payment/return')) {
+    const PaymentReturnPage = lazy(() =>
+      import('@/pages/PaymentReturnPage').then((m) => ({ default: m.PaymentReturnPage }))
+    );
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <PaymentReturnPage />
+      </Suspense>
     );
   }
   return (

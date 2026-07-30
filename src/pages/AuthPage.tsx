@@ -251,6 +251,12 @@ export function AuthPage() {
             city: regData.city.trim(),
             address: regData.address.trim(),
             status: 'pending',
+            terms_accepted_at: new Date().toISOString(),
+            privacy_accepted_at: new Date().toISOString(),
+            vendor_terms_accepted_at: new Date().toISOString(),
+            terms_version: '2026-07-30',
+            privacy_version: '2026-07-30',
+            vendor_terms_version: '2026-07-30',
           });
           if (vendError) {
             console.error('[register] vendor insert error:', vendError.message);
@@ -286,6 +292,10 @@ export function AuthPage() {
             department: regData.department,
             city: regData.city.trim(),
             address: regData.address.trim(),
+            terms_accepted_at: new Date().toISOString(),
+            privacy_accepted_at: new Date().toISOString(),
+            terms_version: '2026-07-30',
+            privacy_version: '2026-07-30',
           });
           if (custError) {
             console.error('[register] customer insert error:', custError.message);
@@ -651,15 +661,20 @@ function RegisterWizard({
         {/* Step 6: Terms */}
         {REG_STEPS[step].key === 'terms' && (
           <div className="space-y-3">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 max-h-48 overflow-y-auto">
-              <h3 className="font-semibold text-slate-900 text-sm mb-2">Tèm ak Kondisyon TOUPRE</h3>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 max-h-48 overflow-y-auto space-y-2">
+              <h3 className="font-semibold text-slate-900 text-sm">Akseptasyon Legal TOUPRE</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Lè w kreye yon kont sou TOUPRE, w aksepte respekte règ platfòm nan.
-                Ou dwe bay enfòmasyon ki vrè, w pa gen dwa pibliye pwodwi ilegal,
-                epi w ap resevwa kòmand nan zòn ou. TOUPRE gen dwa sispann kont ou
-                si w pa respekte règ yo. Peman yo fèt sèlman via MonCash.
-                Tout pri yo an Goud Ayisyen (HTG).
+                Ou dwe aksepte Tèm ak Kondisyon epi Règleman sou Vi Prive pou kreye yon kont.
+                Vandè yo aksepte tou Tèm Vandè yo.
               </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <a href="#/legal/terms" className="text-[11px] text-emerald-700 font-semibold underline">Tèm</a>
+                <a href="#/legal/privacy" className="text-[11px] text-emerald-700 font-semibold underline">Vi Prive</a>
+                <a href="#/legal/vendor-terms" className="text-[11px] text-emerald-700 font-semibold underline">Tèm Vandè</a>
+                <a href="#/legal/payment-policy" className="text-[11px] text-emerald-700 font-semibold underline">Peman</a>
+                <a href="#/legal/classified-policy" className="text-[11px] text-emerald-700 font-semibold underline">Anons</a>
+                <a href="#/legal/refund-policy" className="text-[11px] text-emerald-700 font-semibold underline">Rembousman</a>
+              </div>
             </div>
             <label className="flex items-start gap-3 cursor-pointer">
               <button
@@ -672,7 +687,7 @@ function RegisterWizard({
                 {data.termsAccepted && <CheckCircle2 size={14} className="text-white" />}
               </button>
               <span className="text-sm text-slate-700">
-                Mwen li e m aksepte tèm ak kondisyon yo.
+                Mwen li e m aksepte Tèm ak Kondisyon, Règleman sou Vi Prive, epi règleman peman/anons yo.
               </span>
             </label>
           </div>

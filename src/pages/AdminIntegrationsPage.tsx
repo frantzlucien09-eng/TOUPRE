@@ -30,7 +30,7 @@ type ToggleItem = {
 
 const DEFAULT_TOGGLES: Omit<ToggleItem, 'enabled' | 'raw'>[] = [
   { key: 'google_oauth', label: 'Google OAuth', description: 'Pèmèt koneksyon ak Google' },
-  { key: 'moncash_payments', label: 'MonCash', description: 'Peman ak demann retire via MonCash (poko konekte)' },
+  { key: 'moncash_payments', label: 'MonCash', description: 'Peman / anons / verifye via Edge (sandbox oswa live)' },
   { key: 'natcash_payments', label: 'NatCash', description: 'Peman via NatCash (poko konekte)' },
   { key: 'visa_payments', label: 'Visa', description: 'Peman kat Visa (poko konekte)' },
   { key: 'mastercard_payments', label: 'Mastercard', description: 'Peman kat Mastercard (poko konekte)' },

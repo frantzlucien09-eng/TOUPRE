@@ -160,7 +160,7 @@ export function AdminPaymentsPage() {
             <WalletCards size={18} className="text-emerald-600" /> Siveyans Peman
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Achitekti provider-agnostic — MonCash / NatCash / Visa / Mastercard poko konekte.
+            MonCash konekte via Edge Functions. NatCash / Visa / Mastercard rete nan achitekti sèlman.
           </p>
         </div>
         <button
@@ -358,7 +358,7 @@ export function AdminPaymentsPage() {
             </div>
           ))}
           <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 rounded-xl p-3">
-            Aktive yon founisè isit la pa konekte API live. Kreye / sekrè yo ap vini nan etap MonCash.
+            MonCash: mete sekrè Edge (MONCASH_*) + VITE_MONCASH_ENABLED=true. Lòt founisè yo rete off jiskaske yo konekte.
           </p>
         </div>
       )}

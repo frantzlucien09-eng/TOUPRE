@@ -1,9 +1,9 @@
 import type { PaymentProvider } from './types';
+import { MonCashPaymentProvider } from './moncash';
 
 /**
  * Payment provider adapter contract.
- * Concrete MonCash / NatCash / card adapters MUST implement this later.
- * This architecture ships only a Null / Manual adapter — no live rails.
+ * MonCash is wired via Edge Functions (secrets never in VITE_*).
  */
 export type ProviderInitiateInput = {
   paymentId: string;
@@ -45,7 +45,6 @@ export type ProviderWebhookVerificationResult = {
 export interface PaymentProviderAdapter {
   readonly id: PaymentProvider;
   readonly displayName: string;
-  /** Always false until a real integration is wired. */
   readonly connected: boolean;
   initiate(input: ProviderInitiateInput): Promise<ProviderInitiateResult>;
   verifyWebhook(input: ProviderWebhookVerificationInput): Promise<ProviderWebhookVerificationResult>;
@@ -103,7 +102,7 @@ class UnconnectedProvider implements PaymentProviderAdapter {
 
 const registry: Record<PaymentProvider, PaymentProviderAdapter> = {
   manual: new ManualPaymentProvider(),
-  moncash: new UnconnectedProvider('moncash', 'MonCash'),
+  moncash: new MonCashPaymentProvider(),
   natcash: new UnconnectedProvider('natcash', 'NatCash'),
   visa: new UnconnectedProvider('visa', 'Visa'),
   mastercard: new UnconnectedProvider('mastercard', 'Mastercard'),
@@ -116,4 +115,8 @@ export function getPaymentProvider(provider: PaymentProvider | string): PaymentP
 
 export function listPaymentProviders(): PaymentProviderAdapter[] {
   return Object.values(registry);
+}
+
+export function isMonCashLiveEnabled(): boolean {
+  return getPaymentProvider('moncash').connected;
 }

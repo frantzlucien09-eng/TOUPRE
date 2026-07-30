@@ -141,21 +141,18 @@ export function SettingsPage({ onBack }: Props) {
       </Modal>
 
       <Modal open={open === 'terms'} onClose={() => setOpen(null)} title="Kondisyon Itilizasyon">
-        <div className="space-y-3 text-xs text-slate-600 leading-relaxed">
-          <p>1. TOUPRE se yon platfòm mache pou vandè ak kliyan ayisyen.</p>
-          <p>2. Tout transaksyon yo fèt an Goud Ayisyen (HTG) via MonCash.</p>
-          <p>3. Vandè yo dwe respekte kliyan yo e livrer kòmand an tan.</p>
-          <p>4. Nòt konfyans ka desann -25% pou chak erè oswa vyolasyon règleman.</p>
-          <p>5. Admin ka sispann yon kont si gen pwoblèm.</p>
-          <p>6. Rekonpans Top Vandè yo peye chak mwa: 25,000 G (Zòn), 50,000 G (Nasyonal).</p>
-          <p>7. Tout enfòmasyon yo pataje ant 3 aplikasyon yo (Vandè, Kliyan, Admin) an tan reyèl.</p>
-          <p className="font-semibold text-slate-700 mt-2">Nòt espesyal pou Kay ak Machin:</p>
-          <p>Pou tranzaksyon Kay ak Machin, TOUPRE sèvi sèlman kòm platfòm piblisite — nou pa verifye, garanti, ni patisipe nan tranzaksyon final ant kliyan ak vandè pou kategori sa yo. Fè prekosyon w e verifye tout dokiman anvan nenpòt echanj lajan oswa randevou fizik. Vandè peye 2,500 HTG pa MonCash pou pibliye chak anons.</p>
-          <p className="font-semibold text-slate-700 mt-3">Kontak Ofisyèl:</p>
-          <a href="mailto:toupreed@gmail.com" className="flex items-center gap-2 text-emerald-600 font-semibold hover:underline">
+        <div className="space-y-3 text-sm text-slate-600">
+          <p className="text-xs text-slate-500">Li dokiman legal ofisyèl yo:</p>
+          <a href="#/legal/terms" className="block font-semibold text-emerald-700 underline">Tèm ak Kondisyon</a>
+          <a href="#/legal/privacy" className="block font-semibold text-emerald-700 underline">Règleman sou Vi Prive</a>
+          <a href="#/legal/vendor-terms" className="block font-semibold text-emerald-700 underline">Tèm Vandè</a>
+          <a href="#/legal/classified-policy" className="block font-semibold text-emerald-700 underline">Politik Anons Kay/Machin</a>
+          <a href="#/legal/payment-policy" className="block font-semibold text-emerald-700 underline">Politik Peman</a>
+          <a href="#/legal/refund-policy" className="block font-semibold text-emerald-700 underline">Politik Rembousman / Diskisyon</a>
+          <p className="font-semibold text-slate-700 mt-3 text-xs">Kontak:</p>
+          <a href="mailto:toupreed@gmail.com" className="flex items-center gap-2 text-emerald-600 font-semibold hover:underline text-xs">
             <Mail size={14} /> toupreed@gmail.com
           </a>
-          <p className="text-xs text-slate-500">Voye nou yon imèl, n ap reponn ou pi vit posib.</p>
         </div>
       </Modal>
     </div>

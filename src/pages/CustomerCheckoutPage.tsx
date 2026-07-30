@@ -5,6 +5,7 @@ import { clearCart, fetchCartItems, groupCartByVendor, type CartItemWithProduct 
 import { canAddProductToCart } from '@/lib/classifiedRules';
 import { placeOrder } from '@/lib/placeOrder';
 import { listAddresses, type SavedAddress } from '@/lib/addresses';
+import { initiatePaymentWithProvider, isMonCashLiveEnabled } from '@/lib/payments';
 import { formatHTG } from '@/lib/format';
 import { ArrowLeft, Loader2, MapPin, Truck, Check } from 'lucide-react';
 
@@ -27,6 +28,7 @@ export function CustomerCheckoutPage({ onBack, onSuccess }: Props) {
   const [city, setCity] = useState(customer?.city ?? '');
   const [department, setDepartment] = useState(customer?.department ?? '');
   const [notes, setNotes] = useState('');
+  const moncashLive = isMonCashLiveEnabled();
 
   useEffect(() => {
     if (!user) return;
@@ -81,6 +83,8 @@ export function CustomerCheckoutPage({ onBack, onSuccess }: Props) {
       const groups = groupCartByVendor(items);
       const results: string[] = [];
 
+      let checkoutUrl: string | null = null;
+
       for (const [vendorId, vendorItems] of groups) {
         const orderItems = vendorItems.map((it) => {
           const unit = Number(it.product!.price);
@@ -119,12 +123,43 @@ export function CustomerCheckoutPage({ onBack, onSuccess }: Props) {
           throw new Error(result.error || 'Erè pase kòmand');
         }
         if (result.order_number) results.push(result.order_number);
+
+        if (moncashLive && result.order_id) {
+          const origin = typeof window !== 'undefined' ? window.location.origin : '';
+          const pay = await initiatePaymentWithProvider({
+            amount: vendorSubtotal,
+            provider: 'moncash',
+            purpose: 'order',
+            orderId: result.order_id,
+            vendorId,
+            customerId: user.id,
+            metadata: { order_number: result.order_number ?? null },
+            returnUrl: `${origin}/#/payment/return`,
+            cancelUrl: `${origin}/#/`,
+          });
+          if (!pay.success) {
+            throw new Error(pay.error || 'MonCash initiate echwe');
+          }
+          if (pay.checkoutUrl && !checkoutUrl) checkoutUrl = pay.checkoutUrl;
+        }
       }
 
       await clearCart(user.id);
+
+      if (checkoutUrl) {
+        toast(
+          results.length
+            ? `Kòmand pase: ${results.join(', ')}. Ap mennen ou nan MonCash…`
+            : 'Ap mennen ou nan MonCash…',
+          'success'
+        );
+        window.location.href = checkoutUrl;
+        return;
+      }
+
       toast(
         results.length
-          ? `Kòmand pase: ${results.join(', ')}. Peman: an atant (MonCash pita).`
+          ? `Kòmand pase: ${results.join(', ')}.${moncashLive ? ' Peman an atant verifikasyon.' : ' Peman: an atant (MonCash).'}`
           : 'Kòmand pase ak siksè.',
         'success'
       );
@@ -239,7 +274,9 @@ export function CustomerCheckoutPage({ onBack, onSuccess }: Props) {
           </div>
 
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
-            Peman MonCash ap vini nan yon lòt etap. Kòmand yo ap anrejistre ak estati <b>pa peye</b> pou kounye a.
+            {moncashLive
+              ? 'Apre ou konfime, w ap redirekte nan MonCash pou peye (HTG). Kòmand yo rete an atant jiskaske peman konfime.'
+              : 'MonCash live poko aktive sou kliyan an. Kòmand yo ap anrejistre ak estati pa peye — admin ka verifye maniyèlman.'}
           </div>
 
           <div className="bg-white rounded-xl border border-slate-100 p-4 space-y-2">
@@ -268,7 +305,7 @@ export function CustomerCheckoutPage({ onBack, onSuccess }: Props) {
             className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-60"
           >
             {submitting ? <Loader2 size={18} className="animate-spin" /> : null}
-            Konfime kòmand ({formatHTG(subtotal)})
+            {moncashLive ? `Peye ak MonCash (${formatHTG(subtotal)})` : `Konfime kòmand (${formatHTG(subtotal)})`}
           </button>
         </div>
       )}
