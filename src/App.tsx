@@ -27,6 +27,10 @@ const OrderDeliveringPage = lazy(() => import('@/pages/OrderDeliveringPage').the
 const VendorDashboardPage = lazy(() => import('@/pages/VendorDashboardPage').then((m) => ({ default: m.VendorDashboardPage })));
 const AdminLogin = lazy(() => import('@/pages/AdminLogin').then((m) => ({ default: m.AdminLogin })));
 const AdminDashboard = lazy(() => import('@/pages/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
+const LegalPage = lazy(() => import('@/pages/LegalPage').then((m) => ({ default: m.LegalPage })));
+const PaymentReturnPage = lazy(() =>
+  import('@/pages/PaymentReturnPage').then((m) => ({ default: m.PaymentReturnPage }))
+);
 
 function RouteFallback() {
   return (
@@ -67,7 +71,6 @@ function Shell() {
     ]);
     const key = (allowed.has(raw) ? raw : 'terms') as
       | 'privacy' | 'terms' | 'vendor-terms' | 'classified-policy' | 'payment-policy' | 'refund-policy';
-    const LegalPage = lazy(() => import('@/pages/LegalPage').then((m) => ({ default: m.LegalPage })));
     return (
       <Suspense fallback={<RouteFallback />}>
         <LegalPage docKey={key} />
@@ -75,9 +78,6 @@ function Shell() {
     );
   }
   if (route.startsWith('payment/return')) {
-    const PaymentReturnPage = lazy(() =>
-      import('@/pages/PaymentReturnPage').then((m) => ({ default: m.PaymentReturnPage }))
-    );
     return (
       <Suspense fallback={<RouteFallback />}>
         <PaymentReturnPage />

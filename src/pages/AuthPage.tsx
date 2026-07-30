@@ -668,12 +668,12 @@ function RegisterWizard({
                 Vandè yo aksepte tou Tèm Vandè yo.
               </p>
               <div className="flex flex-wrap gap-2 pt-1">
-                <a href="#/legal/terms" className="text-[11px] text-emerald-700 font-semibold underline">Tèm</a>
-                <a href="#/legal/privacy" className="text-[11px] text-emerald-700 font-semibold underline">Vi Prive</a>
-                <a href="#/legal/vendor-terms" className="text-[11px] text-emerald-700 font-semibold underline">Akò Vandè</a>
-                <a href="#/legal/payment-policy" className="text-[11px] text-emerald-700 font-semibold underline">Peman</a>
-                <a href="#/legal/classified-policy" className="text-[11px] text-emerald-700 font-semibold underline">Anons</a>
-                <a href="#/legal/refund-policy" className="text-[11px] text-emerald-700 font-semibold underline">Rembousman</a>
+                <LegalDocLink hash="terms" label="Tèm" />
+                <LegalDocLink hash="privacy" label="Vi Prive" />
+                <LegalDocLink hash="vendor-terms" label="Akò Vandè" />
+                <LegalDocLink hash="payment-policy" label="Peman" />
+                <LegalDocLink hash="classified-policy" label="Anons" />
+                <LegalDocLink hash="refund-policy" label="Rembousman" />
               </div>
             </div>
             <label className="flex items-start gap-3 cursor-pointer">
@@ -732,6 +732,21 @@ function RegisterWizard({
 }
 
 // ── Reusable input with label ──
+function LegalDocLink({ hash, label }: { hash: string; label: string }) {
+  return (
+    <button
+      type="button"
+      className="text-[11px] text-emerald-700 font-semibold underline"
+      onClick={() => {
+        const url = `${window.location.origin}${window.location.pathname}#/legal/${hash}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 function RegInput({
   label, placeholder, value, onChange, type = 'text', autoFocus,
 }: {
