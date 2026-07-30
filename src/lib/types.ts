@@ -163,7 +163,7 @@ export type Withdrawal = {
   id: string;
   vendor_id: string;
   amount: number;
-  status: 'pending' | 'approved' | 'processing' | 'completed' | 'rejected';
+  status: 'pending' | 'approved' | 'processing' | 'completed' | 'paid' | 'rejected';
   requested_at: string;
   processed_at: string | null;
   received_at: string | null;

@@ -294,7 +294,7 @@ function EditProfileForm({ vendor, onSaved }: { vendor: Vendor; onSaved: () => v
   const { toast } = useToast();
   const [businessName, setBusinessName] = useState(vendor.business_name);
   const [phone, setPhone] = useState(vendor.phone ?? '');
-  const [email, setEmail] = useState(vendor.email ?? '');
+  const [email] = useState(vendor.email ?? '');
   const [address, setAddress] = useState(vendor.address ?? '');
   const [pickupAddress, setPickupAddress] = useState(vendor.pickup_address ?? '');
   const [description, setDescription] = useState(vendor.description ?? '');
@@ -310,6 +310,8 @@ function EditProfileForm({ vendor, onSaved }: { vendor: Vendor; onSaved: () => v
   const [otpCode, setOtpCode] = useState('');
   const [otpVerifying, setOtpVerifying] = useState(false);
   const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
+  const [pendingOtpSecret, setPendingOtpSecret] = useState<string | null>(null);
+  const [nameOtpViaEmail, setNameOtpViaEmail] = useState(false);
 
   useEffect(() => {
     const loadPending = async () => {
@@ -388,16 +390,39 @@ function EditProfileForm({ vendor, onSaved }: { vendor: Vendor; onSaved: () => v
         return;
       }
       setPendingRequestId(data.id);
-      // In production this is sent via SMS (Twilio). For now display it so the vendor can verify.
-      toast(`Kòd OTP ou a: ${code} (valab 10 min)`, 'info');
+      setPendingOtpSecret(code);
+
+      // Prefer email OTP when vendor has email (Settings). Email OTP code differs from
+      // DB secret — verifyEmailOtp first, then unlock the request with the stored secret.
+      if (vendor.email) {
+        const { sendEmailOtp } = await import('@/lib/emailOtp');
+        const otpResult = await sendEmailOtp(vendor.email, 'email_change');
+        if (!otpResult.success) {
+          toast(otpResult.error || 'Pa t kapab voye OTP. Eseye ankò.', 'error');
+          setSaving(false);
+          return;
+        }
+        setNameOtpViaEmail(true);
+        toast(`Kòd OTP voye bay ${vendor.email}`, 'success');
+        if (import.meta.env.DEV && otpResult.code) {
+          toast(`Kòd dev: ${otpResult.code}`, 'info');
+        }
+      } else if (import.meta.env.DEV) {
+        setNameOtpViaEmail(false);
+        toast(`Kòd OTP (dev): ${code}`, 'info');
+      } else {
+        toast('Ajoute yon imèl nan Paramèt pou resevwa kòd OTP.', 'error');
+        setSaving(false);
+        return;
+      }
       setOtpModalOpen(true);
       setSaving(false);
       return; // Don't save other fields yet — name flow takes over
     }
 
-    // Save other profile fields directly (no name change)
+    // Save other profile fields directly (no name change). Email changes go through Settings OTP.
     const { error } = await supabase.from('vendors').update({
-      phone, email, address, pickup_address: pickupAddress, description,
+      phone, address, pickup_address: pickupAddress, description,
       updated_at: new Date().toISOString(),
     }).eq('id', vendor.id);
     setSaving(false);
@@ -406,24 +431,43 @@ function EditProfileForm({ vendor, onSaved }: { vendor: Vendor; onSaved: () => v
   };
 
   const verifyOtp = async () => {
-    if (!pendingRequestId) return;
+    if (!pendingRequestId || !pendingOtpSecret) return;
     setOtpVerifying(true);
-    const { data, error } = await supabase.rpc('verify_name_change_otp', {
-      p_request_id: pendingRequestId,
-      p_code: otpCode,
-    });
-    setOtpVerifying(false);
-    if (error || !data) { toast('Kòd OTP la pa kòrèk oswa li ekspire.', 'error'); return; }
-    setOtpModalOpen(false);
-    setOtpCode('');
-    setNameChanged(true);
-    toast('Demann chanjman non ou voye bay Admin pou revizyon. Ansyen non ou ap rete aktif jiskaske demann lan apwouve.', 'success');
-    // Save the other fields now that the name request is filed
-    const { error: e2 } = await supabase.from('vendors').update({
-      phone, email, address, pickup_address: pickupAddress, description,
-      updated_at: new Date().toISOString(),
-    }).eq('id', vendor.id);
-    if (!e2) onSaved();
+    try {
+      if (nameOtpViaEmail && vendor.email) {
+        const { verifyEmailOtp } = await import('@/lib/emailOtp');
+        const { valid, error: otpErr } = await verifyEmailOtp(vendor.email, otpCode, 'email_change');
+        if (!valid) {
+          toast(otpErr || 'Kòd OTP la pa kòrèk oswa li ekspire.', 'error');
+          return;
+        }
+      } else if (otpCode !== pendingOtpSecret) {
+        toast('Kòd OTP la pa kòrèk oswa li ekspire.', 'error');
+        return;
+      }
+
+      const { data, error } = await supabase.rpc('verify_name_change_otp', {
+        p_request_id: pendingRequestId,
+        p_code: pendingOtpSecret,
+      });
+      if (error || !data) {
+        toast('Kòd OTP la pa kòrèk oswa li ekspire.', 'error');
+        return;
+      }
+      setOtpModalOpen(false);
+      setOtpCode('');
+      setPendingOtpSecret(null);
+      setNameChanged(true);
+      toast('Demann chanjman non ou voye bay Admin pou revizyon. Ansyen non ou ap rete aktif jiskaske demann lan apwouve.', 'success');
+      // Save other fields (email is managed in Settings)
+      const { error: e2 } = await supabase.from('vendors').update({
+        phone, address, pickup_address: pickupAddress, description,
+        updated_at: new Date().toISOString(),
+      }).eq('id', vendor.id);
+      if (!e2) onSaved();
+    } finally {
+      setOtpVerifying(false);
+    }
   };
 
   return (
@@ -461,7 +505,7 @@ function EditProfileForm({ vendor, onSaved }: { vendor: Vendor; onSaved: () => v
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-start gap-2">
           <KeyRound size={16} className="text-amber-600 mt-0.5 shrink-0" />
           <p className="text-xs text-amber-700">
-            Chanjman non bezwen yon kòd OTP (SMS) pou konfime idantite w, epi apwobasyon Admin. Ansyen non ou ap rete aktif jiskaske demann lan apwouve.
+            Chanjman non bezwen yon kòd OTP (imèl) pou konfime idantite w, epi apwobasyon Admin. Ansyen non ou ap rete aktif jiskaske demann lan apwouve.
           </p>
         </div>
       )}
@@ -474,7 +518,16 @@ function EditProfileForm({ vendor, onSaved }: { vendor: Vendor; onSaved: () => v
         </div>
       )}
       <FormField label="Telefòn" value={phone} onChange={setPhone} />
-      <FormField label="Imèl" value={email} onChange={setEmail} type="email" />
+      <div>
+        <label className="text-xs font-semibold text-slate-600">Imèl</label>
+        <input
+          type="email"
+          value={email}
+          readOnly
+          className="mt-1 w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-slate-100 text-sm text-slate-600"
+        />
+        <p className="text-[11px] text-slate-400 mt-1">Chanje imèl nan Paramèt → Enfòmasyon kontak (OTP).</p>
+      </div>
       <FormField label="Adrès" value={address} onChange={setAddress} />
       <FormField label="Adrès pickup" value={pickupAddress} onChange={setPickupAddress} />
       <div>
@@ -498,7 +551,9 @@ function EditProfileForm({ vendor, onSaved }: { vendor: Vendor; onSaved: () => v
       <Modal open={otpModalOpen} onClose={() => setOtpModalOpen(false)} title="Konfime chanjman non">
         <div className="space-y-3">
           <p className="text-sm text-slate-600">
-            Nou voye yon kòd OTP nan telefòn ou ({vendor.phone ?? '...'}). Antre l la a pou konfime se w menm k ap mande chanjman non an.
+            {nameOtpViaEmail
+              ? <>Nou voye yon kòd OTP nan imèl ou ({vendor.email}). Antre l la a pou konfime se w menm k ap mande chanjman non an.</>
+              : <>Antre kòd OTP la pou konfime se w menm k ap mande chanjman non an.</>}
           </p>
           <input
             value={otpCode}

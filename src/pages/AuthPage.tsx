@@ -202,14 +202,16 @@ export function AuthPage() {
     setLoading(true);
     setRegError('');
     try {
+      const businessName = regData.display_name.trim() || regData.fullName.trim();
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: regData.email.trim(),
         password: regData.password,
         options: {
           data: {
-            role: 'customer',
+            role: 'vendor',
             full_name: regData.fullName.trim(),
-            display_name: regData.display_name.trim() || regData.fullName.trim(),
+            display_name: businessName,
+            business_name: businessName,
             phone: regData.phone.trim(),
             department: regData.department,
             city: regData.city.trim(),
@@ -220,24 +222,44 @@ export function AuthPage() {
       if (signUpError) throw signUpError;
       if (!data.user) throw new Error('Kont pa t kreye. Eseye ankò.');
 
-      // Insert customer profile
-      const { error: custError } = await supabase.from('customers').insert({
-        id: data.user.id,
-        user_id: data.user.id,
-        full_name: regData.fullName.trim(),
-        display_name: regData.display_name.trim() || regData.fullName.trim(),
-        email: regData.email.trim(),
-        phone: regData.phone.trim(),
-        department: regData.department,
-        city: regData.city.trim(),
-        address: regData.address.trim(),
-      });
-      if (custError) {
-        console.error('[register] customer insert error:', custError.message);
+      // Ensure vendor profile exists (trigger may already create it)
+      const { data: existingVendor } = await supabase
+        .from('vendors')
+        .select('id')
+        .eq('user_id', data.user.id)
+        .maybeSingle();
+
+      if (existingVendor) {
+        await supabase.from('vendors').update({
+          business_name: businessName,
+          email: regData.email.trim(),
+          phone: regData.phone.trim(),
+          department: regData.department,
+          city: regData.city.trim(),
+          address: regData.address.trim(),
+          status: 'pending',
+          updated_at: new Date().toISOString(),
+        }).eq('id', existingVendor.id);
+      } else {
+        const { error: vendError } = await supabase.from('vendors').insert({
+          user_id: data.user.id,
+          business_name: businessName,
+          email: regData.email.trim(),
+          phone: regData.phone.trim(),
+          department: regData.department,
+          city: regData.city.trim(),
+          address: regData.address.trim(),
+          status: 'pending',
+        });
+        if (vendError) {
+          console.error('[register] vendor insert error:', vendError.message);
+          throw new Error(vendError.message || 'Pa t kapab kreye pwofil vandè.');
+        }
       }
 
-      // Auto sign-in (signUp already creates a session when email confirmation is off)
-      toast('Kont ou kreye ak siksè! Byenveni sou TOUPRE.', 'success');
+      await supabase.from('profiles').update({ role: 'vendor' }).eq('user_id', data.user.id);
+
+      toast('Kont vandè kreye ak siksè! Konplete KYC pou kòmanse.', 'success');
       await reloadVendor(data.user.id);
     } catch (err) {
       const raw = err instanceof Error ? err.message : '';

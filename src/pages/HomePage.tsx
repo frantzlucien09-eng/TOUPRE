@@ -16,9 +16,10 @@ type Props = {
   onGoBalance: () => void;
   onGoProducts: () => void;
   onGoDashboard: () => void;
+  notifTick?: number;
 };
 
-export function HomePage({ onOpenNotifications, onOpenOrder, onGoOrders, onGoTopVendors, onGoBalance, onGoProducts, onGoDashboard }: Props) {
+export function HomePage({ onOpenNotifications, onOpenOrder, onGoOrders, onGoTopVendors, onGoBalance, onGoProducts, onGoDashboard, notifTick = 0 }: Props) {
   const { vendor, user } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [todayRevenue, setTodayRevenue] = useState(0);
@@ -30,6 +31,7 @@ export function HomePage({ onOpenNotifications, onOpenOrder, onGoOrders, onGoTop
 
   useEffect(() => {
     if (!vendor) return;
+    const notifId = user?.id ?? vendor.user_id;
     const load = async () => {
       const { data: ords } = await supabase
         .from('orders')
@@ -51,12 +53,14 @@ export function HomePage({ onOpenNotifications, onOpenOrder, onGoOrders, onGoTop
       setZoneRank(rank?.zone_rank ?? null);
       setNationalRank(rank?.national_rank ?? null);
 
-      const { count } = await supabase
-        .from('notifications')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', vendor.id)
-        .eq('read', false);
-      setUnread(count ?? 0);
+      if (notifId) {
+        const { count } = await supabase
+          .from('notifications')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', notifId)
+          .eq('read', false);
+        setUnread(count ?? 0);
+      }
 
       const { data: prods } = await supabase
         .from('products')
@@ -77,7 +81,7 @@ export function HomePage({ onOpenNotifications, onOpenOrder, onGoOrders, onGoTop
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [vendor]);
+  }, [vendor, user?.id, notifTick]);
 
   if (!vendor) return null;
 

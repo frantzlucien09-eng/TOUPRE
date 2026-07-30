@@ -2,30 +2,32 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { relativeTime } from '@/lib/format';
+import { notifUserId } from '@/lib/vendorIds';
 import type { Notification } from '@/lib/types';
 import { Modal } from './Modal';
 import { EmptyState } from './EmptyState';
 import { Bell, MessageSquare, Wallet, Shield, Info } from 'lucide-react';
 
 export function NotificationsPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { vendor } = useAuth();
+  const { vendor, user } = useAuth();
   const [items, setItems] = useState<Notification[]>([]);
 
   const load = async () => {
-    if (!vendor) return;
+    const uid = notifUserId(vendor, user?.id);
+    if (!uid) return;
     const { data } = await supabase
       .from('notifications')
       .select('*')
-      .eq('user_id', vendor.id)
+      .eq('user_id', uid)
       .order('created_at', { ascending: false })
       .limit(50);
     setItems((data ?? []) as Notification[]);
-    await supabase.from('notifications').update({ read: true }).eq('user_id', vendor.id).eq('read', false);
+    await supabase.from('notifications').update({ read: true }).eq('user_id', uid).eq('read', false);
   };
 
   useEffect(() => {
     if (open) load();
-  }, [open, vendor]);
+  }, [open, vendor, user?.id]);
 
   const iconFor = (type: string) => {
     switch (type) {

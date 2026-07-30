@@ -25,6 +25,7 @@ import { NotificationsPanel } from '@/components/NotificationsPanel';
 import { Logo } from '@/components/Logo';
 import { Loader2 } from 'lucide-react';
 import type { Order } from '@/lib/types';
+import { vendorInboxOrFilter, vendorMessageRealtimeFilters } from '@/lib/vendorIds';
 
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash.replace(/^#\/?/, ''));
@@ -45,11 +46,12 @@ function Shell() {
 }
 
 function VendorShell() {
-  const { vendor, customer, loading } = useAuth();
+  const { vendor, customer, loading, refreshVendor } = useAuth();
   const [page, setPage] = useState<Page>('home');
   const [screen, setScreen] = useState<Screen>('main');
   const [orderFilter, setOrderFilter] = useState<'today' | 'new' | 'done' | undefined>(undefined);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [notifTick, setNotifTick] = useState(0);
   const [ordersBadge, setOrdersBadge] = useState(0);
   const [messagesBadge, setMessagesBadge] = useState(0);
   const [activeOrder, setActiveOrder] = useState<Order | null>(null);
@@ -67,31 +69,21 @@ function VendorShell() {
     };
     load();
     const loadMsgs = async () => {
-      const { count, error: msgErr } = await supabase
+      const { count } = await supabase
         .from('messages')
         .select('id', { count: 'exact', head: true })
-        .or(`recipient_id.eq.${vendor.id},receiver_id.eq.${vendor.id}`)
+        .or(vendorInboxOrFilter(vendor))
         .eq('read', false);
-      console.log('[vendor inbox loaded]', { vendorId: vendor.id, unreadCount: count, error: msgErr?.message });
       setMessagesBadge(count ?? 0);
     };
     loadMsgs();
-    const channel = supabase
+    let channel = supabase
       .channel('orders-badge')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `vendor_id=eq.${vendor.id}` }, load)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `recipient_id=eq.${vendor.id}` }, (payload) => {
-        console.log('[realtime message received]', { event: payload.eventType, new: payload.new });
-        loadMsgs();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `receiver_id=eq.${vendor.id}` }, (payload) => {
-        console.log('[realtime message received via receiver_id]', { event: payload.eventType, new: payload.new });
-        loadMsgs();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `sender_id=eq.${vendor.id}` }, (payload) => {
-        console.log('[realtime message received]', { event: payload.eventType, new: payload.new });
-        loadMsgs();
-      })
-      .subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `vendor_id=eq.${vendor.id}` }, load);
+    for (const filter of vendorMessageRealtimeFilters(vendor)) {
+      channel = channel.on('postgres_changes', filter, () => { loadMsgs(); });
+    }
+    channel.subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [vendor]);
 
@@ -105,7 +97,7 @@ function VendorShell() {
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [vendor?.id]);
+  }, [vendor?.id, refreshVendor]);
 
   if (loading) {
     return (
@@ -118,6 +110,7 @@ function VendorShell() {
 
   if (!vendor && !customer) return <AuthPage />;
   if (!vendor && customer) return <CustomerHome />;
+  if (!vendor) return <AuthPage />;
 
   // Pending KYC review — vendor must complete onboarding before using the app
   if (vendor.status === 'pending' || vendor.status === 'pending_review') {
@@ -155,6 +148,7 @@ function VendorShell() {
     <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative">
       {screen === 'main' && page === 'home' && (
         <HomePage
+          notifTick={notifTick}
           onOpenNotifications={() => setNotifOpen(true)}
           onOpenOrder={() => { setPage('orders'); setScreen('main'); }}
           onGoOrders={goOrders}
@@ -204,7 +198,10 @@ function VendorShell() {
 
       <BottomNav current={screen === 'main' ? page : 'profile'} onNavigate={navigate} orderBadge={ordersBadge} messageBadge={messagesBadge} />
 
-      <NotificationsPanel open={notifOpen} onClose={() => setNotifOpen(false)} />
+      <NotificationsPanel
+        open={notifOpen}
+        onClose={() => { setNotifOpen(false); setNotifTick((t) => t + 1); }}
+      />
     </div>
   );
 }

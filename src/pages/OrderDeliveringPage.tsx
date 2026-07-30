@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
 import { formatHTG } from '@/lib/format';
 import { uploadDeliveryProof } from '@/lib/media';
+import { orderStatusRpcFailed } from '@/lib/orderRpc';
 import type { Order } from '@/lib/types';
 import {
   ArrowLeft, MapPin, Phone, MessageCircle, Check, Navigation, Clock, Package, Loader2, Camera, X, Image as ImageIcon,
@@ -35,7 +36,7 @@ function initials(name: string): string {
 }
 
 export function OrderDeliveringPage({ order, onBack, onMessage }: Props) {
-  const { vendor } = useAuth();
+  const { vendor, refreshVendor } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [proofUrl, setProofUrl] = useState<string | null>(null);
@@ -68,9 +69,7 @@ export function OrderDeliveringPage({ order, onBack, onMessage }: Props) {
     }
     setUploading(true);
     try {
-      console.log('[proof] starting upload, file:', file.name, file.size, file.type);
       const url = await uploadDeliveryProof(file, vendor.id, order.id);
-      console.log('[proof] upload success:', url);
       setProofUrl(url);
       toast('Foto prèv anrejistre');
     } catch (e) {
@@ -88,23 +87,18 @@ export function OrderDeliveringPage({ order, onBack, onMessage }: Props) {
     }
     setLoading(true);
     const newStatus = isPickup ? 'picked_up' : 'delivered';
-    const { error } = await supabase.rpc('update_order_status', {
+    const { data, error } = await supabase.rpc('update_order_status', {
       p_order_id: order.id,
       p_new_status: newStatus,
       p_delivery_proof_url: proofUrl,
     });
     setLoading(false);
-    if (error) {
-      toast('Erè, eseye ankò', 'error');
+    const fail = orderStatusRpcFailed(error, data);
+    if (fail) {
+      toast(fail, 'error');
       return;
     }
-    if (vendor) {
-      await supabase.from('vendors').update({
-        orders_sent: (vendor.orders_sent ?? 0) + 1,
-        balance: Number(vendor.balance) + Number(order.total),
-        points: (vendor.points ?? 0) + 10,
-      }).eq('id', vendor.id);
-    }
+    await refreshVendor();
     toast(isPickup ? 'Kòmand retire' : 'Kòmand livre');
     onBack();
   };
