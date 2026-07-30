@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useToast } from '@/lib/toast';
 import { useConfirm } from '@/lib/confirm';
 import { formatHTG, formatDateTime, relativeTime } from '@/lib/format';
+import { WITHDRAWAL_STATUS_LABELS, WITHDRAWAL_STATUS_STYLES } from '@/lib/withdrawalStatus';
 import type { Vendor, Withdrawal } from '@/lib/types';
 import {
   Search, Loader2, Wallet, ChevronRight, X, CheckCircle2, XCircle,
@@ -25,23 +26,8 @@ const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
   { key: 'rejected', label: 'Rejte' },
 ];
 
-const STATUS_STYLES: Record<string, string> = {
-  pending: 'bg-amber-100 text-amber-700',
-  approved: 'bg-blue-100 text-blue-700',
-  processing: 'bg-indigo-100 text-indigo-700',
-  paid: 'bg-emerald-100 text-emerald-700',
-  completed: 'bg-emerald-100 text-emerald-700',
-  rejected: 'bg-rose-100 text-rose-700',
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: 'An Atant',
-  approved: 'Apwouve',
-  processing: 'Ap Trete',
-  paid: 'Peye',
-  completed: 'Konplete',
-  rejected: 'Rejte',
-};
+const STATUS_STYLES = WITHDRAWAL_STATUS_STYLES;
+const STATUS_LABELS = WITHDRAWAL_STATUS_LABELS;
 
 const NEXT_STATUS: Record<string, string | null> = {
   pending: 'approved',

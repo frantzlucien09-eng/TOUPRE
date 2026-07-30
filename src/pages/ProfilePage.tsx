@@ -291,6 +291,7 @@ export function ProfilePage({ onGoOrdersDone, onGoSettings, onGoWithdraw, onGoFo
 }
 
 function EditProfileForm({ vendor, onSaved }: { vendor: Vendor; onSaved: () => void }) {
+  const { user } = useAuth();
   const { toast } = useToast();
   const [businessName, setBusinessName] = useState(vendor.business_name);
   const [phone, setPhone] = useState(vendor.phone ?? '');
@@ -337,10 +338,11 @@ function EditProfileForm({ vendor, onSaved }: { vendor: Vendor; onSaved: () => v
   };
 
   const uploadAvatar = async (): Promise<string | null> => {
-    if (!avatarFile) return null;
+    if (!avatarFile || !user) return null;
     setAvatarUploading(true);
     const ext = avatarFile.name.split('.').pop()?.toLowerCase() ?? 'jpg';
-    const path = `${vendor.id}/${Date.now()}.${ext}`;
+    // Storage RLS requires first path segment = auth.uid()
+    const path = `${user.id}/${Date.now()}.${ext}`;
     const { error: upErr } = await supabase.storage.from('avatars').upload(path, avatarFile, { upsert: true });
     setAvatarUploading(false);
     if (upErr) { toast('Pwoblèm telechaje foto a.', 'error'); return null; }

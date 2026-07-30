@@ -1,10 +1,6 @@
+import { buildCorsHeaders } from "../_shared/cors.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.45.4";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Client-Info, Apikey",
-};
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -92,6 +88,8 @@ async function sendEmailViaResend(to: string, subject: string, body: string): Pr
 }
 
 Deno.serve(async (req: Request) => {
+  const corsHeaders = buildCorsHeaders(req);
+
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 200, headers: corsHeaders });
   }
@@ -139,26 +137,29 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    console.log(`[send-email-otp] OTP for ${email} (${purpose}): ${code}`);
+    // Never log OTP codes — only purpose + masked email
+    const masked = typeof email === "string" && email.includes("@")
+      ? `${email.slice(0, 2)}***@${email.split("@")[1]}`
+      : "***";
+    console.log(`[send-email-otp] OTP created for ${masked} (${purpose})`);
 
-    // Send the email via Resend
     try {
       await sendEmailViaResend(email, SUBJECTS[purpose], BODY_TEMPLATES[purpose](code));
     } catch (emailErr) {
       const msg = emailErr instanceof Error ? emailErr.message : "Erè, eseye ankò";
-      console.error(`[send-email-otp] Failed to send email to ${email}:`, msg);
+      console.error(`[send-email-otp] Failed to send email to ${masked}:`, msg);
       return new Response(
         JSON.stringify({ error: `Imèl pa t voye: ${msg}` }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const isDev = Deno.env.get("DENO_DEPLOYMENT_ID") === undefined;
     const responseBody: Record<string, unknown> = {
       success: true,
       message: `Kòd voye bay ${email}`,
     };
-    if (isDev) {
+    // Explicit opt-in only — never echo OTP in production by default
+    if (Deno.env.get("ALLOW_DEV_OTP") === "true") {
       responseBody.code = code;
     }
 

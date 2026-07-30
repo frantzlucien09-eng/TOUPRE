@@ -95,8 +95,8 @@ export function KycOnboardingPage() {
     const path = `${vendor.id}/${label}-${Date.now()}.${ext}`;
     const { error } = await supabase.storage.from('kyc-documents').upload(path, file, { upsert: true });
     if (error) { toast('Pwoblèm telechaje dokiman an.', 'error'); return null; }
-    const { data } = supabase.storage.from('kyc-documents').getPublicUrl(path);
-    return data.publicUrl;
+    // Private bucket: persist storage path (admin signs on view)
+    return path;
   };
 
   const onPick = (

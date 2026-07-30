@@ -1,6 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/lib/toast';
+import {
+  loadListingFeeSettings,
+  saveListingFeeSettings,
+  type ListingFeeSettings,
+} from '@/lib/listingSettings';
 import { Loader2, ToggleLeft, ToggleRight, Save, Puzzle } from 'lucide-react';
 
 type SettingRow = {
@@ -25,7 +30,10 @@ type ToggleItem = {
 
 const DEFAULT_TOGGLES: Omit<ToggleItem, 'enabled' | 'raw'>[] = [
   { key: 'google_oauth', label: 'Google OAuth', description: 'Pèmèt koneksyon ak Google' },
-  { key: 'moncash_payments', label: 'MonCash', description: 'Peman ak demann retire via MonCash' },
+  { key: 'moncash_payments', label: 'MonCash', description: 'Peman ak demann retire via MonCash (poko konekte)' },
+  { key: 'natcash_payments', label: 'NatCash', description: 'Peman via NatCash (poko konekte)' },
+  { key: 'visa_payments', label: 'Visa', description: 'Peman kat Visa (poko konekte)' },
+  { key: 'mastercard_payments', label: 'Mastercard', description: 'Peman kat Mastercard (poko konekte)' },
   { key: 'ad_publishing', label: 'Anons Kay / Machin', description: 'Piblikasyon anons peye' },
   { key: 'vendor_messaging', label: 'Mesajri', description: 'Chat ant vandè ak kliyan' },
   { key: 'kyc_required', label: 'KYC Obligatwa', description: 'Vandè dwe konplete KYC anvan yo itilize app la' },
@@ -51,9 +59,18 @@ export function AdminIntegrationsPage() {
   const [toggles, setToggles] = useState<ToggleItem[]>([]);
   const [rawSettings, setRawSettings] = useState<SettingRow[]>([]);
   const [mode, setMode] = useState<'settings' | 'defaults'>('defaults');
+  const [listingSettings, setListingSettings] = useState<ListingFeeSettings>({
+    houseListingFee: 2500,
+    vehicleListingFee: 2500,
+    listingDurationDays: 30,
+  });
+  const [savingListing, setSavingListing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
+    const listing = await loadListingFeeSettings();
+    setListingSettings(listing);
+
     const { data, error } = await supabase.from('settings').select('*').limit(200);
     if (error || !data) {
       setMode('defaults');
@@ -205,6 +222,76 @@ export function AdminIntegrationsPage() {
           <p className="text-[11px] text-slate-400">Chanjman yo anrejistre dirèkteman nan Supabase selon RLS admin.</p>
         </div>
       )}
+
+      <div className="bg-white border border-slate-200 rounded-xl p-4 space-y-3">
+        <div>
+          <p className="text-sm font-semibold text-slate-900">Frè & Dire Anons (Kay / Machin)</p>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Valè sa yo pa fikse nan kòd — modifye yo isit la san redeplwaye.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <label className="block text-xs text-slate-500">
+            House Listing Fee (HTG)
+            <input
+              type="number"
+              min={0}
+              value={listingSettings.houseListingFee}
+              onChange={(e) =>
+                setListingSettings((s) => ({ ...s, houseListingFee: Math.max(0, Number(e.target.value) || 0) }))
+              }
+              className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </label>
+          <label className="block text-xs text-slate-500">
+            Vehicle Listing Fee (HTG)
+            <input
+              type="number"
+              min={0}
+              value={listingSettings.vehicleListingFee}
+              onChange={(e) =>
+                setListingSettings((s) => ({ ...s, vehicleListingFee: Math.max(0, Number(e.target.value) || 0) }))
+              }
+              className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </label>
+          <label className="block text-xs text-slate-500">
+            Listing Duration (days)
+            <input
+              type="number"
+              min={1}
+              value={listingSettings.listingDurationDays}
+              onChange={(e) =>
+                setListingSettings((s) => ({
+                  ...s,
+                  listingDurationDays: Math.max(1, Math.floor(Number(e.target.value) || 1)),
+                }))
+              }
+              className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            />
+          </label>
+        </div>
+        <button
+          type="button"
+          disabled={savingListing}
+          onClick={async () => {
+            setSavingListing(true);
+            try {
+              await saveListingFeeSettings(listingSettings);
+              toast('Paramèt anons sove');
+              await load();
+            } catch (err) {
+              toast(err instanceof Error ? err.message : 'Erè, eseye ankò', 'error');
+            } finally {
+              setSavingListing(false);
+            }
+          }}
+          className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-sm font-semibold flex items-center gap-2 disabled:opacity-50"
+        >
+          {savingListing ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+          Sove frè / dire anons
+        </button>
+      </div>
     </div>
   );
 }

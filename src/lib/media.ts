@@ -100,6 +100,23 @@ export async function uploadDeliveryProof(
     .from(PROOF_BUCKET)
     .upload(path, compressed, { contentType: 'image/jpeg', upsert: false });
   if (error) throw error;
-  const { data } = supabase.storage.from(PROOF_BUCKET).getPublicUrl(path);
-  return data.publicUrl;
+  // Private bucket — return a time-limited signed URL (also store path-friendly URL)
+  const { data, error: signErr } = await supabase.storage
+    .from(PROOF_BUCKET)
+    .createSignedUrl(path, 60 * 60 * 24 * 7); // 7 days for delivery review
+  if (signErr || !data?.signedUrl) throw signErr ?? new Error('Pa ka kreye lyen prèv');
+  return data.signedUrl;
+}
+
+/** Refresh a delivery-proof signed URL from a stored URL or path. */
+export async function refreshDeliveryProofUrl(urlOrPath: string): Promise<string> {
+  const marker = '/delivery-proofs/';
+  let path = urlOrPath;
+  const idx = urlOrPath.indexOf(marker);
+  if (idx >= 0) path = decodeURIComponent(urlOrPath.slice(idx + marker.length).split('?')[0]);
+  const { data, error } = await supabase.storage
+    .from(PROOF_BUCKET)
+    .createSignedUrl(path, 60 * 60);
+  if (error || !data?.signedUrl) throw error ?? new Error('Pa ka rafrechi lyen prèv');
+  return data.signedUrl;
 }

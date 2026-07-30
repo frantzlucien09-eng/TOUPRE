@@ -63,9 +63,10 @@ export function MessagesPage({ initialCustomerId, onClearInitial }: { initialCus
 
     const { data: msgs, error: msgsError } = await supabase
       .from('messages')
-      .select('*')
+      .select('id, sender_id, recipient_id, receiver_id, body, image_url, product_id, order_id, read, created_at')
       .or(vendorMessageOrFilter(vendor))
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .limit(300);
 
     if (msgsError && import.meta.env.DEV) {
       console.error('[vendor inbox]', msgsError.message);

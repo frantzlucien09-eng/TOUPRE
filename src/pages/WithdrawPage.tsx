@@ -3,6 +3,7 @@ import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/lib/toast';
 import { formatHTG, formatDateTime, formatDate } from '@/lib/format';
+import { WITHDRAWAL_STATUS_LABELS, WITHDRAWAL_STATUS_STYLES } from '@/lib/withdrawalStatus';
 import type { Withdrawal } from '@/lib/types';
 import { Header } from '@/components/Header';
 import { Modal } from '@/components/Modal';
@@ -31,7 +32,8 @@ export function WithdrawPage({ onBack }: { onBack: () => void }) {
       .from('withdrawals')
       .select('*')
       .eq('vendor_id', vendor.id)
-      .order('requested_at', { ascending: false });
+      .order('requested_at', { ascending: false })
+      .limit(50);
     setWithdrawals((data ?? []) as Withdrawal[]);
   };
 
@@ -256,14 +258,7 @@ function Row({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 export function WithdrawStatusPill({ status }: { status: string }) {
-  const map: Record<string, { label: string; cls: string }> = {
-    pending: { label: 'An atant', cls: 'bg-amber-100 text-amber-700' },
-    approved: { label: 'Aksepte', cls: 'bg-blue-100 text-blue-700' },
-    processing: { label: 'An kou', cls: 'bg-indigo-100 text-indigo-700' },
-    paid: { label: 'Peye', cls: 'bg-emerald-100 text-emerald-700' },
-    completed: { label: 'Fini/Voye', cls: 'bg-emerald-100 text-emerald-700' },
-    rejected: { label: 'Rejte', cls: 'bg-red-100 text-red-700' },
-  };
-  const s = map[status] ?? { label: status, cls: 'bg-slate-100 text-slate-600' };
-  return <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${s.cls}`}>{s.label}</span>;
+  const label = WITHDRAWAL_STATUS_LABELS[status] ?? status;
+  const cls = WITHDRAWAL_STATUS_STYLES[status] ?? 'bg-slate-100 text-slate-600';
+  return <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${cls}`}>{label}</span>;
 }
