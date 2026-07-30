@@ -6,13 +6,20 @@ import { formatHTG, relativeTime } from '@/lib/format';
 import {
   LayoutDashboard, Users, BadgeCheck, ShoppingCart, Send, Trophy,
   Shield, Lock, Settings, Share2, ToggleRight, Wallet, FileText,
-  LogOut, Menu, X, Activity, TrendingUp, DollarSign, UserCheck,
-  Loader2,
+  LogOut, Menu, X, Activity, DollarSign, Loader2,
 } from 'lucide-react';
 import { AdminKycPage } from '@/pages/AdminKycPage';
 import { AdminOrdersPage } from '@/pages/AdminOrdersPage';
 import { AdminProductsPage } from '@/pages/AdminProductsPage';
 import { AdminAnalyticsPage } from '@/pages/AdminAnalyticsPage';
+import { AdminWithdrawalsPage } from '@/pages/AdminWithdrawalsPage';
+import { AdminVendorsPage } from '@/pages/AdminVendorsPage';
+import { AdminSocialPage } from '@/pages/AdminSocialPage';
+import { AdminBroadcastPage } from '@/pages/AdminBroadcastPage';
+import { AdminIntegrationsPage } from '@/pages/AdminIntegrationsPage';
+import { AdminPermissionsPage } from '@/pages/AdminPermissionsPage';
+import { AdminSecurityPage } from '@/pages/AdminSecurityPage';
+import { AdminCleanupPage } from '@/pages/AdminCleanupPage';
 import { DateRangeFilter, getRangeStartDate, formatRangeLabel, type DateRangeKey } from '@/components/DateRangeFilter';
 
 type Section =
@@ -34,6 +41,7 @@ const NAV: { key: Section; label: string; icon: React.ReactNode }[] = [
   { key: 'permissions', label: 'Pèmisyon', icon: <Shield size={15} /> },
   { key: 'security', label: 'Sekirite', icon: <Lock size={15} /> },
   { key: 'finance', label: 'Paramèt Finansye', icon: <DollarSign size={15} /> },
+  { key: 'activity', label: 'Aktivite', icon: <Activity size={15} /> },
   { key: 'cleanup', label: 'Netwayaj Done', icon: <Settings size={15} /> },
 ];
 
@@ -105,11 +113,20 @@ export function AdminDashboard() {
   };
 
   const loadActivity = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('activity_log')
       .select('id, action, actor_name, created_at')
       .order('created_at', { ascending: false })
-      .limit(20);
+      .limit(50);
+    if (error) {
+      const { data: d2 } = await supabase
+        .from('activity_logs')
+        .select('id, action, actor_name, created_at')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      setRecentActivity((d2 ?? []) as ActivityEntry[]);
+      return;
+    }
     setRecentActivity((data ?? []) as ActivityEntry[]);
   };
 
@@ -162,7 +179,10 @@ export function AdminDashboard() {
         <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-0.5">
           {NAV.map((item) => {
             const isActive = section === item.key;
-            const showBadge = item.key === 'kyc' && stats.pendingKyc > 0;
+            const badge =
+              item.key === 'kyc' && stats.pendingKyc > 0 ? stats.pendingKyc
+                : item.key === 'withdrawals' && stats.pendingWithdrawals > 0 ? stats.pendingWithdrawals
+                  : 0;
             return (
               <button
                 key={item.key}
@@ -175,9 +195,9 @@ export function AdminDashboard() {
               >
                 {item.icon}
                 <span className="flex-1 text-left">{item.label}</span>
-                {showBadge && (
+                {badge > 0 && (
                   <span className="bg-red-500 text-white text-[10px] px-1.5 rounded-full font-semibold leading-4">
-                    {stats.pendingKyc}
+                    {badge}
                   </span>
                 )}
               </button>
@@ -241,15 +261,20 @@ export function AdminDashboard() {
 
         <main className="p-4 lg:p-5 max-w-5xl">
           {section === 'dashboard' && <DashboardView stats={stats} recentActivity={recentActivity} dateRange={dateRange} />}
-          {section === 'activity' && <ActivityView recentActivity={recentActivity} />}
+          {section === 'activity' && <ActivityView recentActivity={recentActivity} onRefresh={loadActivity} />}
           {section === 'kyc' && <AdminKycPage />}
           {section === 'orders' && <AdminOrdersPage />}
+          {section === 'withdrawals' && <AdminWithdrawalsPage />}
+          {section === 'vendors' && <AdminVendorsPage />}
+          {section === 'social' && <AdminSocialPage />}
+          {section === 'broadcast' && <AdminBroadcastPage />}
+          {section === 'integrations' && <AdminIntegrationsPage />}
+          {section === 'permissions' && <AdminPermissionsPage />}
+          {section === 'security' && <AdminSecurityPage />}
+          {section === 'cleanup' && <AdminCleanupPage />}
           {section === 'reports' && <AdminProductsPage />}
           {section === 'top' && <AdminAnalyticsPage initialTab="sellers" />}
           {section === 'finance' && <AdminAnalyticsPage initialTab="commission" />}
-          {section !== 'dashboard' && section !== 'activity' && section !== 'kyc' && section !== 'orders' && section !== 'reports' && section !== 'top' && section !== 'finance' && (
-            <Placeholder section={section} />
-          )}
         </main>
       </div>
       <div className="text-center text-xs text-slate-400 py-3 px-4">
@@ -319,7 +344,7 @@ function DashboardView({ stats, recentActivity, dateRange }: {
               <p className="text-sm text-slate-400">Pa gen aktivite anrejistre toujou.</p>
             </div>
           ) : (
-            recentActivity.map((a) => (
+            recentActivity.slice(0, 20).map((a) => (
               <div
                 key={a.id}
                 className="flex items-center gap-2.5 bg-white border border-slate-200 rounded-xl px-3 py-2.5"
@@ -336,12 +361,18 @@ function DashboardView({ stats, recentActivity, dateRange }: {
   );
 }
 
-function ActivityView({ recentActivity }: { recentActivity: ActivityEntry[] }) {
+function ActivityView({ recentActivity, onRefresh }: { recentActivity: ActivityEntry[]; onRefresh: () => void }) {
   return (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
       <div className="flex items-center gap-2 px-5 py-4 border-b border-slate-100">
         <Activity size={18} className="text-emerald-600" />
-        <h2 className="font-bold text-slate-900 text-sm">Rejis Aktivite Konplè</h2>
+        <h2 className="font-bold text-slate-900 text-sm flex-1">Rejis Aktivite Konplè</h2>
+        <button
+          onClick={onRefresh}
+          className="text-[11px] font-semibold text-emerald-600 hover:underline"
+        >
+          Rafrechi
+        </button>
       </div>
       {recentActivity.length === 0 ? (
         <p className="px-5 py-12 text-sm text-slate-400 text-center">Pa gen aktivite anrejistre toujou.</p>
@@ -359,19 +390,6 @@ function ActivityView({ recentActivity }: { recentActivity: ActivityEntry[] }) {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-function Placeholder({ section }: { section: Section }) {
-  const label = NAV.find((n) => n.key === section)?.label ?? section;
-  return (
-    <div className="bg-white rounded-2xl border border-dashed border-slate-300 p-12 text-center">
-      <div className="w-14 h-14 rounded-2xl bg-slate-100 flex items-center justify-center mx-auto mb-4 text-slate-400">
-        <TrendingUp size={24} />
-      </div>
-      <h2 className="font-bold text-slate-900 text-base mb-1">{label}</h2>
-      <p className="text-sm text-slate-400">Seksyon sa a ap parèt pito. Kontinye konstwi li youn pa youn.</p>
     </div>
   );
 }

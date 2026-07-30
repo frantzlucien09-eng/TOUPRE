@@ -193,11 +193,11 @@ export function WithdrawPage({ onBack }: { onBack: () => void }) {
                   className="w-full flex items-center gap-3 bg-white rounded-xl p-3 border border-slate-100 shadow-sm active:scale-95 transition text-left"
                 >
                   <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${
-                    w.status === 'completed' ? 'bg-emerald-50 text-emerald-600'
+                    w.status === 'completed' || w.status === 'paid' ? 'bg-emerald-50 text-emerald-600'
                     : w.status === 'rejected' ? 'bg-red-50 text-red-600'
                     : 'bg-amber-50 text-amber-600'
                   }`}>
-                    {w.status === 'completed' ? <CheckCircle2 size={18} />
+                    {w.status === 'completed' || w.status === 'paid' ? <CheckCircle2 size={18} />
                       : w.status === 'rejected' ? <XCircle size={18} />
                       : <Clock size={18} />}
                   </div>
@@ -243,6 +243,7 @@ export function WithdrawStatusPill({ status }: { status: string }) {
     pending: { label: 'An atant', cls: 'bg-amber-100 text-amber-700' },
     approved: { label: 'Aksepte', cls: 'bg-blue-100 text-blue-700' },
     processing: { label: 'An kou', cls: 'bg-indigo-100 text-indigo-700' },
+    paid: { label: 'Peye', cls: 'bg-emerald-100 text-emerald-700' },
     completed: { label: 'Fini/Voye', cls: 'bg-emerald-100 text-emerald-700' },
     rejected: { label: 'Rejte', cls: 'bg-red-100 text-red-700' },
   };
