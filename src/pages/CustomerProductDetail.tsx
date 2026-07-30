@@ -246,20 +246,30 @@ export function CustomerProductDetail({ productId, onBack, onAddedToCart, onMess
         )}
 
         <div className="space-y-2">
-          <button
-            type="button"
-            disabled={!canAdd || adding}
-            onClick={handleAdd}
-            className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
-          >
-            {adding ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
-            {canAdd ? 'Ajoute nan panye' : 'Pa disponib pou achte'}
-          </button>
+          {isAdCategory(product.category) ? (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-xl px-3 py-2">
+              Anons Kay/Machin — Contact Seller sèlman. Pa gen achte nan panye.
+            </p>
+          ) : (
+            <button
+              type="button"
+              disabled={!canAdd || adding}
+              onClick={handleAdd}
+              className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-50"
+            >
+              {adding ? <Loader2 size={18} className="animate-spin" /> : <ShoppingCart size={18} />}
+              {canAdd ? 'Ajoute nan panye' : 'Pa disponib pou achte'}
+            </button>
+          )}
           {vendor && onMessageVendor && (
             <button
               type="button"
               onClick={() => onMessageVendor(vendor.id, product.id)}
-              className="w-full py-3 rounded-xl border border-emerald-200 text-emerald-700 font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition"
+              className={`w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition ${
+                isAdCategory(product.category)
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'border border-emerald-200 text-emerald-700'
+              }`}
             >
               <MessageCircle size={18} />
               Kontakte vandè
