@@ -25,7 +25,10 @@ type ToggleItem = {
 
 const DEFAULT_TOGGLES: Omit<ToggleItem, 'enabled' | 'raw'>[] = [
   { key: 'google_oauth', label: 'Google OAuth', description: 'Pèmèt koneksyon ak Google' },
-  { key: 'moncash_payments', label: 'MonCash', description: 'Peman ak demann retire via MonCash' },
+  { key: 'moncash_payments', label: 'MonCash', description: 'Peman ak demann retire via MonCash (poko konekte)' },
+  { key: 'natcash_payments', label: 'NatCash', description: 'Peman via NatCash (poko konekte)' },
+  { key: 'visa_payments', label: 'Visa', description: 'Peman kat Visa (poko konekte)' },
+  { key: 'mastercard_payments', label: 'Mastercard', description: 'Peman kat Mastercard (poko konekte)' },
   { key: 'ad_publishing', label: 'Anons Kay / Machin', description: 'Piblikasyon anons peye' },
   { key: 'vendor_messaging', label: 'Mesajri', description: 'Chat ant vandè ak kliyan' },
   { key: 'kyc_required', label: 'KYC Obligatwa', description: 'Vandè dwe konplete KYC anvan yo itilize app la' },
