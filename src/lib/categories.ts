@@ -52,8 +52,8 @@ export const SHOE_BRANDS = ['Nike', 'Adidas', 'Puma', 'Reebok', 'Lokal / San Mak
 export const SHOE_CONDITIONS = ['Nèf', 'Sekonmen — Byen Kenbe'];
 export const SHOE_SIZES = ['32', '33', '34', '35', '36', '37', '38', '39', '40', '41', '42', '43', '44', '45', '46'];
 
-export const AD_FEE = 2500;
-export const AD_DURATION_DAYS = 30;
+export const AD_FEE = 2500; // default fallback — prefer loadListingFeeSettings()
+export const AD_DURATION_DAYS = 30; // default fallback — prefer loadListingFeeSettings()
 export const AD_CATEGORIES: ProductCategory[] = ['kay', 'machin'];
 
 export function isAdCategory(cat: ProductCategory | null | undefined): boolean {

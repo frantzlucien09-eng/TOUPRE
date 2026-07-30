@@ -4,8 +4,24 @@ import { supabase } from '@/lib/supabase';
 import { useToast } from '@/lib/toast';
 import { useConfirm } from '@/lib/confirm';
 import { formatHTG, formatDate } from '@/lib/format';
-import { CATEGORY_ICON, CATEGORY_LABEL, isAdCategory, AD_FEE } from '@/lib/categories';
-import type { Product, ProductCategory } from '@/lib/types';
+import { CATEGORY_ICON, CATEGORY_LABEL, isAdCategory } from '@/lib/categories';
+import {
+  fetchLatestAdPaymentsForProducts,
+  softExpireListingIfNeeded,
+  prepareListingRenewal,
+} from '@/lib/listingActions';
+import {
+  LISTING_STATUS_LABELS,
+  LISTING_STATUS_STYLES,
+  resolveListingDisplayStatus,
+  type ListingDisplayStatus,
+} from '@/lib/listingStatus';
+import {
+  listingFeeForCategory,
+  loadListingFeeSettings,
+  type ListingFeeSettings,
+} from '@/lib/listingSettings';
+import type { AdPayment, Product, ProductCategory } from '@/lib/types';
 import { Header } from '@/components/Header';
 import { Modal } from '@/components/Modal';
 import { EmptyState } from '@/components/EmptyState';
@@ -14,7 +30,7 @@ import { ProductCard } from '@/components/ProductCard';
 import { AdPaymentModal } from '@/components/AdPaymentModal';
 import {
   Package, Plus, Trash2, Loader2, Image as ImageIcon, Pencil,
-  AlertTriangle, Clock, Eye, EyeOff, BadgeCheck,
+  AlertTriangle, Clock, Eye, EyeOff, BadgeCheck, Hourglass,
 } from 'lucide-react';
 
 export function ProductsPage() {
@@ -22,6 +38,8 @@ export function ProductsPage() {
   const { toast } = useToast();
   const { confirm } = useConfirm();
   const [products, setProducts] = useState<Product[]>([]);
+  const [paymentsByProduct, setPaymentsByProduct] = useState<Map<string, AdPayment>>(new Map());
+  const [listingSettings, setListingSettings] = useState<ListingFeeSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Product | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -31,12 +49,29 @@ export function ProductsPage() {
   const load = async () => {
     if (!vendor) return;
     setLoading(true);
-    const { data } = await supabase
-      .from('products')
-      .select('*')
-      .eq('vendor_id', vendor.id)
-      .order('created_at', { ascending: false });
-    setProducts((data ?? []) as Product[]);
+    const [{ data }, settings] = await Promise.all([
+      supabase
+        .from('products')
+        .select('*')
+        .eq('vendor_id', vendor.id)
+        .order('created_at', { ascending: false }),
+      loadListingFeeSettings(),
+    ]);
+    setListingSettings(settings);
+
+    let list = (data ?? []) as Product[];
+    // Soft-expire without deleting — keep photos/history for Renew
+    list = await Promise.all(
+      list.map(async (p) => (isAdCategory(p.category) ? softExpireListingIfNeeded(p) : p))
+    );
+    setProducts(list);
+
+    const adIds = list.filter((p) => isAdCategory(p.category)).map((p) => p.id);
+    try {
+      setPaymentsByProduct(await fetchLatestAdPaymentsForProducts(adIds));
+    } catch {
+      setPaymentsByProduct(new Map());
+    }
     setLoading(false);
   };
 
@@ -98,14 +133,27 @@ export function ProductsPage() {
     }
   };
 
-  const relistAd = (p: Product) => {
+  const relistAd = async (p: Product) => {
     setDetail(null);
+    if (p.ad_status === 'expired' || p.ad_status === 'sold') {
+      try {
+        await prepareListingRenewal(p.id);
+      } catch {
+        // still open payment modal
+      }
+    }
     setPayForProduct({ id: p.id, category: p.category as 'kay' | 'machin' });
   };
 
   if (!vendor) return null;
-  const active = products.filter((p) => isAdCategory(p.category) ? p.ad_status === 'active' : p.active).length;
+  const active = products.filter((p) => {
+    if (!isAdCategory(p.category)) return p.active;
+    return resolveListingDisplayStatus(p, paymentsByProduct.get(p.id)) === 'active';
+  }).length;
   const finished = products.length - active;
+  const defaultFee = listingSettings
+    ? listingFeeForCategory(listingSettings, 'kay')
+    : 2500;
 
   return (
     <div className="pb-24">
@@ -124,14 +172,15 @@ export function ProductsPage() {
           <div className="grid grid-cols-2 gap-3">
             {products.map((p) => {
               const isAd = isAdCategory(p.category);
-              const adExpired = isAd && p.ad_status === 'active' && p.ad_expires_at && new Date(p.ad_expires_at) < new Date();
-              const effectiveStatus = adExpired ? 'expired' : p.ad_status;
+              const displayStatus = isAd
+                ? resolveListingDisplayStatus(p, paymentsByProduct.get(p.id))
+                : null;
               return (
                 <div key={p.id} className="flex flex-col">
                   <ProductCard product={p} onClick={() => setDetail(p)} />
                   <div className="flex items-center justify-between mt-1.5 px-1">
-                    {isAd ? (
-                      <AdStatusPill status={effectiveStatus} />
+                    {isAd && displayStatus ? (
+                      <AdStatusPill status={displayStatus} />
                     ) : (
                       <button
                         onClick={() => toggleActive(p)}
@@ -165,10 +214,20 @@ export function ProductsPage() {
         {detail && (
           <ProductDetailView
             product={detail}
+            displayStatus={
+              isAdCategory(detail.category)
+                ? resolveListingDisplayStatus(detail, paymentsByProduct.get(detail.id))
+                : null
+            }
+            listingFee={
+              isAdCategory(detail.category) && listingSettings
+                ? listingFeeForCategory(listingSettings, detail.category as 'kay' | 'machin')
+                : defaultFee
+            }
             onEdit={() => { setEditing(detail); setDetail(null); }}
             onDelete={() => deleteProduct(detail)}
             onMarkSold={() => markSold(detail)}
-            onRelist={() => relistAd(detail)}
+            onRelist={() => void relistAd(detail)}
           />
         )}
       </Modal>
@@ -207,6 +266,7 @@ export function ProductsPage() {
               vendor_id: vendor.id,
               active: isAd ? false : true,
               ad_status: isAd ? 'draft' : null,
+              status: isAd ? 'draft' : 'active',
             };
             const { data, error } = await supabase.from('products').insert(insertVals).select('id, category').single();
             if (error) {
@@ -261,26 +321,29 @@ export function ProductsPage() {
   );
 }
 
-function AdStatusPill({ status }: { status: string | null }) {
-  const map: Record<string, { label: string; cls: string; icon: typeof Clock }> = {
-    draft: { label: 'Brouyon', cls: 'bg-slate-200 text-slate-600', icon: EyeOff },
-    active: { label: 'Aktif', cls: 'bg-emerald-100 text-emerald-700', icon: Eye },
-    sold: { label: 'Vann/Lwe', cls: 'bg-blue-100 text-blue-700', icon: BadgeCheck },
-    expired: { label: 'Ekspire', cls: 'bg-amber-100 text-amber-700', icon: Clock },
+function AdStatusPill({ status }: { status: ListingDisplayStatus }) {
+  const iconMap: Record<ListingDisplayStatus, typeof Clock> = {
+    pending_payment: Hourglass,
+    pending_review: Clock,
+    active: Eye,
+    rejected: EyeOff,
+    expired: Clock,
+    sold: BadgeCheck,
   };
-  const s = map[status ?? 'draft'] ?? map.draft;
-  const Icon = s.icon;
+  const Icon = iconMap[status] ?? Clock;
   return (
-    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${s.cls}`}>
-      <Icon size={9} /> {s.label}
+    <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${LISTING_STATUS_STYLES[status]}`}>
+      <Icon size={9} /> {LISTING_STATUS_LABELS[status]}
     </span>
   );
 }
 
 function ProductDetailView({
-  product, onEdit, onDelete, onMarkSold, onRelist,
+  product, displayStatus, listingFee, onEdit, onDelete, onMarkSold, onRelist,
 }: {
   product: Product;
+  displayStatus: ListingDisplayStatus | null;
+  listingFee: number;
   onEdit: () => void;
   onDelete: () => void;
   onMarkSold: () => void;
@@ -289,8 +352,6 @@ function ProductDetailView({
   const photos = product.photos ?? [];
   const cover = photos[product.cover_index] ?? photos[0] ?? product.image_url;
   const isAd = isAdCategory(product.category);
-  const adExpired = isAd && product.ad_status === 'active' && product.ad_expires_at && new Date(product.ad_expires_at) < new Date();
-  const effectiveStatus = adExpired ? 'expired' : product.ad_status;
 
   return (
     <div className="space-y-4">
@@ -327,7 +388,7 @@ function ProductDetailView({
             {CATEGORY_ICON[product.category]} {CATEGORY_LABEL[product.category]}
           </span>
         )}
-        {isAd && <AdStatusPill status={effectiveStatus} />}
+        {isAd && displayStatus && <AdStatusPill status={displayStatus} />}
       </div>
 
       <div>
@@ -356,39 +417,50 @@ function ProductDetailView({
 
       <CategoryDetails product={product} />
 
-      {/* Ad-specific info */}
       {isAd && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 space-y-1.5 text-xs">
           <div className="flex items-start gap-2 text-amber-800">
             <AlertTriangle size={16} className="shrink-0 mt-0.5" />
             <p className="leading-relaxed">
-              Pwodwi sa a se yon <b>anons</b> — TOUPRE pa jere tranzaksyon acha a dirèkteman. Kliyan ki enterese ap kontakte w dirèkteman pou wè/achte.
+              Pwodwi sa a se yon <b>anons</b> — TOUPRE pa jere tranzaksyon acha a. Kliyan kontakte w dirèkteman (Contact Seller).
             </p>
           </div>
           {product.ad_paid_at && (
-            <p className="text-slate-500">Peye sou: {formatDate(product.ad_paid_at)}</p>
+            <p className="text-slate-500">Peye / verifye: {formatDate(product.ad_paid_at)}</p>
           )}
-          {product.ad_expires_at && product.ad_status === 'active' && !adExpired && (
+          {product.ad_expires_at && displayStatus === 'active' && (
             <p className="text-slate-500">Ekspire sou: {formatDate(product.ad_expires_at)}</p>
+          )}
+          {displayStatus === 'expired' && (
+            <p className="text-slate-500">Anons ekspire — foto ak istwa yo rete. Ou ka renouvle.</p>
           )}
         </div>
       )}
 
-      {/* Actions */}
       <div className="space-y-2 pt-1">
-        {isAd && product.ad_status === 'active' && !adExpired && (
+        {isAd && displayStatus === 'active' && (
           <button onClick={onMarkSold} className="w-full py-3 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition">
             <BadgeCheck size={18} /> Make kòm Vann/Lwe
           </button>
         )}
-        {isAd && (product.ad_status === 'sold' || product.ad_status === 'expired' || adExpired) && (
+        {isAd && (displayStatus === 'expired' || displayStatus === 'sold') && (
           <button onClick={onRelist} className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition">
-            <Plus size={18} /> Repibliye anons ({formatHTG(AD_FEE)})
+            <Plus size={18} /> Renouvle anons ({formatHTG(listingFee)})
           </button>
         )}
-        {isAd && product.ad_status === 'draft' && (
+        {isAd && displayStatus === 'pending_payment' && (
           <button onClick={onRelist} className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition">
-            Peye {formatHTG(AD_FEE)} pou pibliye
+            Peye {formatHTG(listingFee)} pou pibliye
+          </button>
+        )}
+        {isAd && displayStatus === 'pending_review' && (
+          <p className="text-center text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-xl py-2.5">
+            Anons nan Pending Review — admin ap verifye.
+          </p>
+        )}
+        {isAd && displayStatus === 'rejected' && (
+          <button onClick={onRelist} className="w-full py-3 rounded-xl border border-amber-200 text-amber-800 font-semibold text-sm active:scale-95 transition">
+            Soumèt ankò (peye frè)
           </button>
         )}
         <div className="flex gap-3">

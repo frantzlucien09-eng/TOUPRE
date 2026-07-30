@@ -8,6 +8,7 @@ import { Mail, Lock, Loader2, ArrowLeft, ArrowRight, KeyRound, ShieldCheck, User
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 
 type Mode = 'login' | 'register' | 'verify' | 'forgot' | 'reset';
+type AccountType = 'customer' | 'vendor';
 
 const DEPARTMENTS = [
   'Artibonite', 'Centre', "Grand'Anse", 'Nippes', 'Nord', 'Nord-Est',
@@ -25,6 +26,7 @@ const REG_STEPS = [
 
 export function AuthPage() {
   const [mode, setMode] = useState<Mode>('login');
+  const [accountType, setAccountType] = useState<AccountType>('customer');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -200,16 +202,17 @@ export function AuthPage() {
     setLoading(true);
     setRegError('');
     try {
-      const businessName = regData.display_name.trim() || regData.fullName.trim();
+      const displayName = regData.display_name.trim() || regData.fullName.trim();
+      const role = accountType === 'vendor' ? 'vendor' : 'customer';
       const { data, error: signUpError } = await supabase.auth.signUp({
         email: regData.email.trim(),
         password: regData.password,
         options: {
           data: {
-            role: 'vendor',
+            role,
             full_name: regData.fullName.trim(),
-            display_name: businessName,
-            business_name: businessName,
+            display_name: displayName,
+            business_name: accountType === 'vendor' ? displayName : undefined,
             phone: regData.phone.trim(),
             department: regData.department,
             city: regData.city.trim(),
@@ -220,44 +223,89 @@ export function AuthPage() {
       if (signUpError) throw signUpError;
       if (!data.user) throw new Error('Kont pa t kreye. Eseye ankò.');
 
-      // Ensure vendor profile exists (trigger may already create it)
-      const { data: existingVendor } = await supabase
-        .from('vendors')
-        .select('id')
-        .eq('user_id', data.user.id)
-        .maybeSingle();
+      if (accountType === 'vendor') {
+        const { data: existingVendor } = await supabase
+          .from('vendors')
+          .select('id')
+          .eq('user_id', data.user.id)
+          .maybeSingle();
 
-      if (existingVendor) {
-        await supabase.from('vendors').update({
-          business_name: businessName,
-          email: regData.email.trim(),
-          phone: regData.phone.trim(),
-          department: regData.department,
-          city: regData.city.trim(),
-          address: regData.address.trim(),
-          status: 'pending',
-          updated_at: new Date().toISOString(),
-        }).eq('id', existingVendor.id);
-      } else {
-        const { error: vendError } = await supabase.from('vendors').insert({
-          user_id: data.user.id,
-          business_name: businessName,
-          email: regData.email.trim(),
-          phone: regData.phone.trim(),
-          department: regData.department,
-          city: regData.city.trim(),
-          address: regData.address.trim(),
-          status: 'pending',
-        });
-        if (vendError) {
-          console.error('[register] vendor insert error:', vendError.message);
-          throw new Error(vendError.message || 'Pa t kapab kreye pwofil vandè.');
+        if (existingVendor) {
+          await supabase.from('vendors').update({
+            business_name: displayName,
+            email: regData.email.trim(),
+            phone: regData.phone.trim(),
+            department: regData.department,
+            city: regData.city.trim(),
+            address: regData.address.trim(),
+            status: 'pending',
+            updated_at: new Date().toISOString(),
+          }).eq('id', existingVendor.id);
+        } else {
+          const { error: vendError } = await supabase.from('vendors').insert({
+            user_id: data.user.id,
+            business_name: displayName,
+            email: regData.email.trim(),
+            phone: regData.phone.trim(),
+            department: regData.department,
+            city: regData.city.trim(),
+            address: regData.address.trim(),
+            status: 'pending',
+            terms_accepted_at: new Date().toISOString(),
+            privacy_accepted_at: new Date().toISOString(),
+            vendor_terms_accepted_at: new Date().toISOString(),
+            terms_version: '2026-07-30',
+            privacy_version: '2026-07-30',
+            vendor_terms_version: '2026-07-30',
+          });
+          if (vendError) {
+            console.error('[register] vendor insert error:', vendError.message);
+            throw new Error(vendError.message || 'Pa t kapab kreye pwofil vandè.');
+          }
         }
+        await supabase.from('profiles').update({ role: 'vendor' }).eq('user_id', data.user.id);
+        toast('Kont vandè kreye ak siksè! Konplete KYC pou kòmanse.', 'success');
+      } else {
+        const { data: existingCustomer } = await supabase
+          .from('customers')
+          .select('id')
+          .or(`id.eq.${data.user.id},user_id.eq.${data.user.id}`)
+          .maybeSingle();
+
+        if (existingCustomer) {
+          await supabase.from('customers').update({
+            user_id: data.user.id,
+            full_name: regData.fullName.trim(),
+            email: regData.email.trim(),
+            phone: regData.phone.trim(),
+            department: regData.department,
+            city: regData.city.trim(),
+            address: regData.address.trim(),
+          }).eq('id', existingCustomer.id);
+        } else {
+          const { error: custError } = await supabase.from('customers').insert({
+            id: data.user.id,
+            user_id: data.user.id,
+            full_name: regData.fullName.trim(),
+            email: regData.email.trim(),
+            phone: regData.phone.trim(),
+            department: regData.department,
+            city: regData.city.trim(),
+            address: regData.address.trim(),
+            terms_accepted_at: new Date().toISOString(),
+            privacy_accepted_at: new Date().toISOString(),
+            terms_version: '2026-07-30',
+            privacy_version: '2026-07-30',
+          });
+          if (custError) {
+            console.error('[register] customer insert error:', custError.message);
+            throw new Error(custError.message || 'Pa t kapab kreye pwofil kliyan.');
+          }
+        }
+        await supabase.from('profiles').update({ role: 'customer' }).eq('user_id', data.user.id);
+        toast('Kont kliyan kreye ak siksè! Byenveni sou TOUPRE.', 'success');
       }
 
-      await supabase.from('profiles').update({ role: 'vendor' }).eq('user_id', data.user.id);
-
-      toast('Kont vandè kreye ak siksè! Konplete KYC pou kòmanse.', 'success');
       await reloadVendor(data.user.id);
     } catch (err) {
       const raw = err instanceof Error ? err.message : '';
@@ -289,11 +337,21 @@ export function AuthPage() {
         <div className="mb-8 flex flex-col items-center">
           <Logo size="lg" />
           <p className="text-slate-500 text-sm mt-3 text-center max-w-xs">
-            Platfòm mache pou vandè ayisyen — jere pwodwi, kòmand, ak lajan ou.
+            {accountType === 'vendor'
+              ? 'Platfòm mache pou vandè ayisyen — jere pwodwi, kòmand, ak lajan ou.'
+              : 'Mache TOUPRE — achte pwodwi lokal, pase kòmand, swiv livrezon.'}
           </p>
         </div>
 
         <div className="w-full max-w-sm bg-white rounded-2xl shadow-xl border border-slate-100 p-6">
+          {/* Account type — shared for login / register */}
+          {(mode === 'login' || mode === 'register') && (
+            <div className="flex gap-1 p-1 bg-slate-100 rounded-xl mb-4">
+              <TabButton active={accountType === 'customer'} label="Kliyan" onClick={() => setAccountType('customer')} />
+              <TabButton active={accountType === 'vendor'} label="Vandè" onClick={() => setAccountType('vendor')} />
+            </div>
+          )}
+
           {/* LOGIN */}
           {mode === 'login' && (
             <>
@@ -316,7 +374,7 @@ export function AuthPage() {
                 <span className="text-xs text-slate-400">oswa</span>
                 <div className="flex-1 h-px bg-slate-200" />
               </div>
-              <GoogleSignInButton context="vendor" />
+              <GoogleSignInButton context={accountType} />
               <p className="text-center text-xs text-slate-400 mt-3">
                 Pa gen kont?{' '}
                 <button onClick={startRegister} className="text-emerald-600 font-semibold hover:underline">Enskri kounye a</button>
@@ -603,15 +661,20 @@ function RegisterWizard({
         {/* Step 6: Terms */}
         {REG_STEPS[step].key === 'terms' && (
           <div className="space-y-3">
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 max-h-48 overflow-y-auto">
-              <h3 className="font-semibold text-slate-900 text-sm mb-2">Tèm ak Kondisyon TOUPRE</h3>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 max-h-48 overflow-y-auto space-y-2">
+              <h3 className="font-semibold text-slate-900 text-sm">Akseptasyon Legal TOUPRE</h3>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Lè w kreye yon kont sou TOUPRE, w aksepte respekte règ platfòm nan.
-                Ou dwe bay enfòmasyon ki vrè, w pa gen dwa pibliye pwodwi ilegal,
-                epi w ap resevwa kòmand nan zòn ou. TOUPRE gen dwa sispann kont ou
-                si w pa respekte règ yo. Peman yo fèt sèlman via MonCash.
-                Tout pri yo an Goud Ayisyen (HTG).
+                Ou dwe aksepte Tèm ak Kondisyon epi Règleman sou Vi Prive pou kreye yon kont.
+                Vandè yo aksepte tou Tèm Vandè yo.
               </p>
+              <div className="flex flex-wrap gap-2 pt-1">
+                <LegalDocLink hash="terms" label="Tèm" />
+                <LegalDocLink hash="privacy" label="Vi Prive" />
+                <LegalDocLink hash="vendor-terms" label="Akò Vandè" />
+                <LegalDocLink hash="payment-policy" label="Peman" />
+                <LegalDocLink hash="classified-policy" label="Anons" />
+                <LegalDocLink hash="refund-policy" label="Rembousman" />
+              </div>
             </div>
             <label className="flex items-start gap-3 cursor-pointer">
               <button
@@ -624,7 +687,7 @@ function RegisterWizard({
                 {data.termsAccepted && <CheckCircle2 size={14} className="text-white" />}
               </button>
               <span className="text-sm text-slate-700">
-                Mwen li e m aksepte tèm ak kondisyon yo.
+                Mwen li e m aksepte Tèm ak Kondisyon, Règleman sou Vi Prive, epi règleman peman/anons yo.
               </span>
             </label>
           </div>
@@ -669,6 +732,21 @@ function RegisterWizard({
 }
 
 // ── Reusable input with label ──
+function LegalDocLink({ hash, label }: { hash: string; label: string }) {
+  return (
+    <button
+      type="button"
+      className="text-[11px] text-emerald-700 font-semibold underline"
+      onClick={() => {
+        const url = `${window.location.origin}${window.location.pathname}#/legal/${hash}`;
+        window.open(url, '_blank', 'noopener,noreferrer');
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 function RegInput({
   label, placeholder, value, onChange, type = 'text', autoFocus,
 }: {

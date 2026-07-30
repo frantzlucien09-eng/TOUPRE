@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 import { useAdminAuth } from '@/lib/adminAuth';
 import { useToast } from '@/lib/toast';
 import { formatDateTime, relativeTime } from '@/lib/format';
+import { resolvePrivateStorageUrl } from '@/lib/storageUrls';
 import type { VendorKyc, Vendor } from '@/lib/types';
 import {
   BadgeCheck, CheckCircle2, XCircle, Search, Loader2, User, CreditCard,
@@ -286,14 +287,14 @@ function KycDetailModal({
             {/* ID photos */}
             <Section icon={<CreditCard size={16} />} title="Dokiman ID">
               <div className="grid grid-cols-2 gap-3">
-                <PhotoTile label="Devan ID" url={kyc.id_front_url} onClick={() => setImageZoom(kyc.id_front_url)} />
-                <PhotoTile label="Dèyè ID" url={kyc.id_back_url} onClick={() => setImageZoom(kyc.id_back_url)} />
+                <PhotoTile label="Devan ID" url={kyc.id_front_url} onClick={(src) => setImageZoom(src)} />
+                <PhotoTile label="Dèyè ID" url={kyc.id_back_url} onClick={(src) => setImageZoom(src)} />
               </div>
             </Section>
 
             {/* Selfie */}
             <Section icon={<Camera size={16} />} title="Selfie ak ID">
-              <PhotoTile label="Selfie ak ID" url={kyc.selfie_with_id_url} onClick={() => setImageZoom(kyc.selfie_with_id_url)} />
+              <PhotoTile label="Selfie ak ID" url={kyc.selfie_with_id_url} onClick={(src) => setImageZoom(src)} />
             </Section>
 
             {/* Contact + business */}
@@ -455,13 +456,34 @@ function Field({ label, value }: { label: string; value: string }) {
   );
 }
 
-function PhotoTile({ label, url, onClick }: { label: string; url: string; onClick: () => void }) {
+function PhotoTile({ label, url, onClick }: { label: string; url: string; onClick: (src: string) => void }) {
+  const [src, setSrc] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const signed = await resolvePrivateStorageUrl('kyc-documents', url);
+        if (!cancelled) setSrc(signed);
+      } catch {
+        if (!cancelled) setSrc(url.startsWith('http') ? url : null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [url]);
+
   return (
     <button
-      onClick={onClick}
+      onClick={() => { if (src) onClick(src); }}
       className="group relative aspect-[4/3] rounded-xl overflow-hidden border border-slate-200 bg-slate-100 hover:border-emerald-400 transition"
     >
-      <img src={url} alt={label} className="w-full h-full object-cover" />
+      {src ? (
+        <img src={src} alt={label} className="w-full h-full object-cover" />
+      ) : (
+        <div className="w-full h-full flex items-center justify-center">
+          <Loader2 size={18} className="animate-spin text-slate-300" />
+        </div>
+      )}
       <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition flex items-end p-2">
         <span className="text-[10px] text-white font-semibold bg-black/40 px-2 py-0.5 rounded opacity-0 group-hover:opacity-100 transition flex items-center gap-1">
           <Eye size={10} /> {label}

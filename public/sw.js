@@ -1,4 +1,4 @@
-const CACHE_NAME = 'toupre-vande-v1';
+const CACHE_NAME = 'toupre-vande-v2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { formatHTG, isToday, relativeTime } from '@/lib/format';
+import { STATUS_LABELS_VENDOR, STATUS_STYLES } from '@/lib/orderStatus';
 import type { Order, Product } from '@/lib/types';
 import { Header } from '@/components/Header';
 import { EmptyState } from '@/components/EmptyState';
@@ -227,27 +228,7 @@ export function HomePage({ onOpenNotifications, onOpenOrder, onGoOrders, onGoTop
 }
 
 export function StatusPill({ status }: { status: string }) {
-  const labels: Record<string, string> = {
-    pending: 'Nouvo',
-    accepted: 'Aksepte',
-    preparing: 'An Preparasyon',
-    ready_pickup: 'Pare pou Retire',
-    delivering: 'Ap Livre',
-    delivered: 'Livre',
-    picked_up: 'Kliyan Retire l',
-    cancelled: 'Anile',
-  };
-  const styles: Record<string, string> = {
-    pending: 'bg-amber-100 text-amber-700',
-    accepted: 'bg-blue-100 text-blue-700',
-    preparing: 'bg-blue-100 text-blue-700',
-    ready_pickup: 'bg-violet-100 text-violet-700',
-    delivering: 'bg-indigo-100 text-indigo-700',
-    delivered: 'bg-emerald-100 text-emerald-700',
-    picked_up: 'bg-emerald-100 text-emerald-700',
-    cancelled: 'bg-slate-200 text-slate-600',
-  };
-  const label = labels[status] ?? status;
-  const cls = styles[status] ?? 'bg-slate-100 text-slate-600';
+  const label = STATUS_LABELS_VENDOR[status] ?? status;
+  const cls = STATUS_STYLES[status] ?? 'bg-slate-100 text-slate-600';
   return <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${cls}`}>{label}</span>;
 }

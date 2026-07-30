@@ -1,31 +1,45 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { AdminAuthProvider, useAdminAuth } from '@/lib/adminAuth';
 import { supabase } from '@/lib/supabase';
 import { ToastProvider } from '@/lib/toast';
 import { ConfirmProvider } from '@/lib/confirm';
-import { AuthPage } from '@/pages/AuthPage';
-import { CustomerHome } from '@/pages/CustomerHome';
-import { HomePage } from '@/pages/HomePage';
-import { ProductsPage } from '@/pages/ProductsPage';
-import { OrdersPage } from '@/pages/OrdersPage';
-import { MessagesPage } from '@/pages/MessagesPage';
-import { ProfilePage } from '@/pages/ProfilePage';
-import { WithdrawPage } from '@/pages/WithdrawPage';
-import { SettingsPage } from '@/pages/SettingsPage';
-import { FollowTouprePage } from '@/pages/FollowTouprePage';
-import { KycOnboardingPage } from '@/pages/KycOnboardingPage';
-import { OrderPreparingPage } from '@/pages/OrderPreparingPage';
-import { OrderDeliveringPage } from '@/pages/OrderDeliveringPage';
-import { AdminLogin } from '@/pages/AdminLogin';
-import { AdminDashboard } from '@/pages/AdminDashboard';
-import { VendorDashboardPage } from '@/pages/VendorDashboardPage';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { BottomNav, type Page } from '@/components/BottomNav';
 import { NotificationsPanel } from '@/components/NotificationsPanel';
-import { Logo } from '@/components/Logo';
 import { Loader2 } from 'lucide-react';
 import type { Order } from '@/lib/types';
 import { vendorInboxOrFilter, vendorMessageRealtimeFilters } from '@/lib/vendorIds';
+
+const AuthPage = lazy(() => import('@/pages/AuthPage').then((m) => ({ default: m.AuthPage })));
+const CustomerHome = lazy(() => import('@/pages/CustomerHome').then((m) => ({ default: m.CustomerHome })));
+const HomePage = lazy(() => import('@/pages/HomePage').then((m) => ({ default: m.HomePage })));
+const ProductsPage = lazy(() => import('@/pages/ProductsPage').then((m) => ({ default: m.ProductsPage })));
+const OrdersPage = lazy(() => import('@/pages/OrdersPage').then((m) => ({ default: m.OrdersPage })));
+const MessagesPage = lazy(() => import('@/pages/MessagesPage').then((m) => ({ default: m.MessagesPage })));
+const ProfilePage = lazy(() => import('@/pages/ProfilePage').then((m) => ({ default: m.ProfilePage })));
+const WithdrawPage = lazy(() => import('@/pages/WithdrawPage').then((m) => ({ default: m.WithdrawPage })));
+const SettingsPage = lazy(() => import('@/pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
+const FollowTouprePage = lazy(() => import('@/pages/FollowTouprePage').then((m) => ({ default: m.FollowTouprePage })));
+const KycOnboardingPage = lazy(() => import('@/pages/KycOnboardingPage').then((m) => ({ default: m.KycOnboardingPage })));
+const OrderPreparingPage = lazy(() => import('@/pages/OrderPreparingPage').then((m) => ({ default: m.OrderPreparingPage })));
+const OrderDeliveringPage = lazy(() => import('@/pages/OrderDeliveringPage').then((m) => ({ default: m.OrderDeliveringPage })));
+const VendorDashboardPage = lazy(() => import('@/pages/VendorDashboardPage').then((m) => ({ default: m.VendorDashboardPage })));
+const AdminLogin = lazy(() => import('@/pages/AdminLogin').then((m) => ({ default: m.AdminLogin })));
+const AdminDashboard = lazy(() => import('@/pages/AdminDashboard').then((m) => ({ default: m.AdminDashboard })));
+const LegalPage = lazy(() => import('@/pages/LegalPage').then((m) => ({ default: m.LegalPage })));
+const PaymentReturnPage = lazy(() =>
+  import('@/pages/PaymentReturnPage').then((m) => ({ default: m.PaymentReturnPage }))
+);
+
+function RouteFallback() {
+  return (
+    <div className="min-h-screen flex flex-col items-center justify-center gap-3 bg-slate-50">
+      <img src="/toupre_vande_logo.png" alt="TOUPRE VANDE" className="w-14 h-14 object-contain animate-pulse" />
+      <Loader2 className="animate-spin text-emerald-500" size={22} />
+    </div>
+  );
+}
 
 function useHashRoute() {
   const [hash, setHash] = useState(() => window.location.hash.replace(/^#\/?/, ''));
@@ -41,8 +55,40 @@ type Screen = 'main' | 'withdraw' | 'settings' | 'follow' | 'preparing' | 'deliv
 
 function Shell() {
   const route = useHashRoute();
-  if (route === 'admin') return <AdminShell />;
-  return <VendorShell />;
+  if (route === 'admin' || route.startsWith('admin/')) {
+    return (
+      <AdminAuthProvider>
+        <Suspense fallback={<RouteFallback />}>
+          <AdminShell />
+        </Suspense>
+      </AdminAuthProvider>
+    );
+  }
+  if (route.startsWith('legal/')) {
+    const raw = route.replace(/^legal\//, '');
+    const allowed = new Set([
+      'privacy', 'terms', 'vendor-terms', 'classified-policy', 'payment-policy', 'refund-policy',
+    ]);
+    const key = (allowed.has(raw) ? raw : 'terms') as
+      | 'privacy' | 'terms' | 'vendor-terms' | 'classified-policy' | 'payment-policy' | 'refund-policy';
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <LegalPage docKey={key} />
+      </Suspense>
+    );
+  }
+  if (route.startsWith('payment/return')) {
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <PaymentReturnPage />
+      </Suspense>
+    );
+  }
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <VendorShell />
+    </Suspense>
+  );
 }
 
 function VendorShell() {
@@ -87,7 +133,6 @@ function VendorShell() {
     return () => { supabase.removeChannel(channel); };
   }, [vendor]);
 
-  // Auto-refresh vendor status when admin approves KYC
   useEffect(() => {
     if (!vendor) return;
     const channel = supabase
@@ -99,29 +144,20 @@ function VendorShell() {
     return () => { supabase.removeChannel(channel); };
   }, [vendor?.id, refreshVendor]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-slate-50">
-        <img src="/toupre_vande_logo.png" alt="TOUPRE VANDE" className="w-16 h-16 object-contain animate-pulse" />
-        <Loader2 className="animate-spin text-emerald-500" size={24} />
-      </div>
-    );
-  }
+  if (loading) return <RouteFallback />;
 
   if (!vendor && !customer) return <AuthPage />;
   if (!vendor && customer) return <CustomerHome />;
   if (!vendor) return <AuthPage />;
 
-  // Pending KYC review — vendor must complete onboarding before using the app
   if (vendor.status === 'pending' || vendor.status === 'pending_review') {
     return <KycOnboardingPage />;
   }
 
-  // Suspended account guard
   if (vendor.status === 'suspended') {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-3 px-6 text-center bg-slate-50">
-        <Logo size="md" />
+        <img src="/toupre_vande_logo.png" alt="TOUPRE" className="w-16 h-16 object-contain" />
         <p className="font-bold text-slate-900">Kont ou sispann</p>
         <p className="text-sm text-slate-500">Tanpri kontakte sipò pou èd.</p>
         <a href="mailto:toupreed@gmail.com" className="mt-2 inline-flex items-center gap-2 text-sm text-emerald-600 font-semibold hover:underline">
@@ -132,35 +168,37 @@ function VendorShell() {
     );
   }
 
-  const goOrders = (filter: 'today' | 'new') => {
-    setOrderFilter(filter);
-    setPage('orders');
-    setScreen('main');
-  };
-
   const navigate = (p: Page) => {
     setPage(p);
     setScreen('main');
-    if (p !== 'orders') setOrderFilter(undefined);
+    setOrderFilter(undefined);
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative">
+    <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative pb-20">
       {screen === 'main' && page === 'home' && (
         <HomePage
-          notifTick={notifTick}
           onOpenNotifications={() => setNotifOpen(true)}
-          onOpenOrder={() => { setPage('orders'); setScreen('main'); }}
-          onGoOrders={goOrders}
-          onGoTopVendors={() => { setPage('profile'); setScreen('main'); }}
+          onOpenOrder={(o) => { setActiveOrder(o); setScreen('preparing'); }}
+          onGoOrders={(f) => { setPage('orders'); setOrderFilter(f); setScreen('main'); }}
+          onGoTopVendors={() => setScreen('dashboard')}
           onGoBalance={() => setScreen('withdraw')}
-          onGoProducts={() => { setPage('products'); setScreen('main'); }}
+          onGoProducts={() => setPage('products')}
           onGoDashboard={() => setScreen('dashboard')}
+          notifTick={notifTick}
         />
       )}
       {screen === 'main' && page === 'products' && <ProductsPage />}
-      {screen === 'main' && page === 'orders' && <OrdersPage initialFilter={orderFilter === 'done' ? 'new' : orderFilter} initialTab={orderFilter === 'done' ? 'done' : undefined} onOpenOrder={(o) => { setActiveOrder(o); setScreen('preparing'); }} />}
-      {screen === 'main' && page === 'messages' && <MessagesPage initialCustomerId={messageCustomerId} onClearInitial={() => setMessageCustomerId(null)} />}
+      {screen === 'main' && page === 'orders' && (
+        <OrdersPage
+          initialFilter={orderFilter === 'done' ? 'new' : orderFilter}
+          initialTab={orderFilter === 'done' ? 'done' : undefined}
+          onOpenOrder={(o) => { setActiveOrder(o); setScreen('preparing'); }}
+        />
+      )}
+      {screen === 'main' && page === 'messages' && (
+        <MessagesPage initialCustomerId={messageCustomerId} onClearInitial={() => setMessageCustomerId(null)} />
+      )}
       {screen === 'main' && page === 'profile' && (
         <ProfilePage
           onGoOrdersDone={() => { setPage('orders'); setScreen('main'); setOrderFilter(undefined); }}
@@ -222,14 +260,14 @@ function AdminShell() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AdminAuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
         <ToastProvider>
           <ConfirmProvider>
             <Shell />
           </ConfirmProvider>
         </ToastProvider>
-      </AdminAuthProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
