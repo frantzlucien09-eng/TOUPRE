@@ -64,7 +64,7 @@ async function ensureCustomerFromOAuthIntent(user: User): Promise<void> {
   const { data: existing } = await supabase
     .from('customers')
     .select('id')
-    .eq('id', user.id)
+    .or(`id.eq.${user.id},user_id.eq.${user.id}`)
     .maybeSingle();
 
   if (!existing) {
