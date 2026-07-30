@@ -122,6 +122,11 @@ export type AdPayment = {
   moncash_phone: string | null;
   paid_at: string | null;
   created_at: string;
+  waived?: boolean | null;
+  notes?: string | null;
+  payment_id?: string | null;
+  provider?: string | null;
+  error_message?: string | null;
 };
 
 export type OrderItem = {
