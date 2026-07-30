@@ -1,26 +1,52 @@
 import { useEffect, useState, useCallback, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/lib/toast';
+import { useAdminAuth } from '@/lib/adminAuth';
 import { formatHTG, formatDateTime, relativeTime } from '@/lib/format';
-import { CATEGORY_LABEL } from '@/lib/categories';
-import type { Product, Vendor } from '@/lib/types';
+import { CATEGORY_LABEL, isAdCategory } from '@/lib/categories';
+import {
+  fetchLatestAdPaymentsForProducts,
+  verifyListingPayment,
+  waiveListingFee,
+  approveClassifiedListing,
+  rejectClassifiedListing,
+  prepareListingRenewal,
+  softExpireListingIfNeeded,
+} from '@/lib/listingActions';
+import {
+  LISTING_STATUS_LABELS,
+  LISTING_STATUS_STYLES,
+  resolveListingDisplayStatus,
+  type ListingDisplayStatus,
+} from '@/lib/listingStatus';
+import type { AdPayment, Product, Vendor } from '@/lib/types';
 import {
   Search, Loader2, Package, ChevronRight, X, Store, CheckCircle2,
-  XCircle, Clock, Eye, EyeOff, FileSpreadsheet, Tag, ShoppingBag,
+  XCircle, Clock, Eye, EyeOff, FileSpreadsheet, Tag, ShoppingBag, BadgeDollarSign,
 } from 'lucide-react';
 
 type ProductWithVendor = Product & {
   vendor?: Pick<Vendor, 'id' | 'business_name' | 'department' | 'city' | 'phone'> | null;
 };
 
-type StatusFilter = 'all' | 'pending' | 'active' | 'rejected' | 'draft';
+type ScopeFilter = 'all' | 'classified';
+type StatusFilter = 'all' | 'pending' | 'active' | 'rejected' | 'draft' | 'pending_payment' | 'pending_review' | 'expired';
 
-const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
+const STATUS_FILTERS_ALL: { key: StatusFilter; label: string }[] = [
   { key: 'all', label: 'Tout' },
   { key: 'pending', label: 'An Atant' },
   { key: 'active', label: 'Aktif' },
   { key: 'rejected', label: 'Rejte' },
   { key: 'draft', label: 'Brouyon' },
+];
+
+const STATUS_FILTERS_CLASSIFIED: { key: StatusFilter; label: string }[] = [
+  { key: 'all', label: 'Tout Anons' },
+  { key: 'pending_payment', label: 'Pending Payment' },
+  { key: 'pending_review', label: 'Pending Review' },
+  { key: 'active', label: 'Active' },
+  { key: 'rejected', label: 'Rejected' },
+  { key: 'expired', label: 'Expired' },
 ];
 
 const STATUS_STYLES: Record<string, string> = {
@@ -46,8 +72,12 @@ const STATUS_ICONS: Record<string, React.ReactNode> = {
 
 export function AdminProductsPage() {
   const { toast } = useToast();
+  const { user } = useAdminAuth();
   const [products, setProducts] = useState<ProductWithVendor[]>([]);
+  const [paymentsByProduct, setPaymentsByProduct] = useState<Map<string, AdPayment>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [scope, setScope] = useState<ScopeFilter>('classified');
   const [filter, setFilter] = useState<StatusFilter>('all');
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<ProductWithVendor | null>(null);
@@ -66,9 +96,11 @@ export function AdminProductsPage() {
       `)
       .order('created_at', { ascending: false });
 
-    if (filter === 'draft') {
+    if (scope === 'classified') {
+      query = query.in('category', ['kay', 'machin']);
+    } else if (filter === 'draft') {
       query = query.eq('active', false).neq('status', 'rejected');
-    } else if (filter !== 'all') {
+    } else if (filter !== 'all' && !['pending_payment', 'pending_review', 'expired'].includes(filter)) {
       query = query.eq('status', filter);
     }
 
@@ -80,6 +112,25 @@ export function AdminProductsPage() {
     }
 
     let list = (data ?? []) as unknown as ProductWithVendor[];
+    list = await Promise.all(
+      list.map(async (p) =>
+        isAdCategory(p.category) ? ((await softExpireListingIfNeeded(p)) as ProductWithVendor) : p
+      )
+    );
+
+    const adIds = list.filter((p) => isAdCategory(p.category)).map((p) => p.id);
+    let payMap = new Map<string, AdPayment>();
+    try {
+      payMap = await fetchLatestAdPaymentsForProducts(adIds);
+      setPaymentsByProduct(payMap);
+    } catch {
+      setPaymentsByProduct(new Map());
+    }
+
+    if (scope === 'classified' && filter !== 'all') {
+      list = list.filter((p) => resolveListingDisplayStatus(p, payMap.get(p.id)) === filter);
+    }
+
     if (search.trim()) {
       const q = search.toLowerCase();
       list = list.filter((p) =>
@@ -90,7 +141,7 @@ export function AdminProductsPage() {
     }
     setProducts(list);
     setLoading(false);
-  }, [filter, search, toast]);
+  }, [scope, filter, search, toast]);
 
   useEffect(() => {
     loadProducts();
@@ -105,42 +156,108 @@ export function AdminProductsPage() {
   }, [loadProducts]);
 
   const summary = useMemo(() => {
+    if (scope === 'classified') {
+      const counts = {
+        pending_payment: 0,
+        pending_review: 0,
+        active: 0,
+        rejected: 0,
+        expired: 0,
+      };
+      for (const p of products) {
+        const s = resolveListingDisplayStatus(p, paymentsByProduct.get(p.id));
+        if (s in counts) counts[s as keyof typeof counts]++;
+      }
+      return counts;
+    }
     const counts = { pending: 0, active: 0, rejected: 0, draft: 0 };
     for (const p of products) {
       if (p.status in counts) counts[p.status as keyof typeof counts]++;
       else if (!p.active) counts.draft++;
     }
     return counts;
-  }, [products]);
+  }, [products, paymentsByProduct, scope]);
 
-  const handleApprove = async (id: string) => {
-    const { error } = await supabase
-      .from('products')
-      .update({ status: 'active', updated_at: new Date().toISOString() })
-      .eq('id', id);
-    if (error) { toast('Erè, eseye ankò', 'error'); return; }
-    toast('Pwodwi apwouve e li parèt pou kliyan yo');
-    loadProducts();
+  const runAction = async (fn: () => Promise<void>, okMsg: string) => {
+    setBusy(true);
+    try {
+      await fn();
+      toast(okMsg);
+      setSelected(null);
+      await loadProducts();
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Erè, eseye ankò', 'error');
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const handleReject = async (id: string) => {
-    const { error } = await supabase
-      .from('products')
-      .update({ status: 'rejected', updated_at: new Date().toISOString() })
-      .eq('id', id);
-    if (error) { toast('Erè, eseye ankò', 'error'); return; }
-    toast('Pwodwi rejte');
-    loadProducts();
+  const handleApprove = async (p: ProductWithVendor) => {
+    if (isAdCategory(p.category)) {
+      await runAction(() => approveClassifiedListing(p.id), 'Anons apwouve e li aktif');
+      return;
+    }
+    await runAction(async () => {
+      const { error } = await supabase
+        .from('products')
+        .update({ status: 'active', active: true, updated_at: new Date().toISOString() })
+        .eq('id', p.id);
+      if (error) throw error;
+    }, 'Pwodwi apwouve e li parèt pou kliyan yo');
+  };
+
+  const handleReject = async (p: ProductWithVendor) => {
+    if (isAdCategory(p.category)) {
+      await runAction(() => rejectClassifiedListing(p.id), 'Anons rejte');
+      return;
+    }
+    await runAction(async () => {
+      const { error } = await supabase
+        .from('products')
+        .update({ status: 'rejected', updated_at: new Date().toISOString() })
+        .eq('id', p.id);
+      if (error) throw error;
+    }, 'Pwodwi rejte');
+  };
+
+  const handleVerifyPayment = async (p: ProductWithVendor) => {
+    await runAction(
+      () => verifyListingPayment(p.id, user?.id ?? null),
+      'Peman verifye — anons nan Pending Review'
+    );
+  };
+
+  const handleWaiveFee = async (p: ProductWithVendor) => {
+    await runAction(
+      () =>
+        waiveListingFee({
+          productId: p.id,
+          vendorId: p.vendor_id,
+          category: p.category ?? 'kay',
+          adminUserId: user?.id ?? null,
+        }),
+      'Frè anons waive — Pending Review'
+    );
+  };
+
+  const handleRenewExpired = async (p: ProductWithVendor) => {
+    await runAction(async () => {
+      await prepareListingRenewal(p.id);
+    }, 'Anons pare pou renouvle — vandè dwe peye frè a (oswa waive)');
   };
 
   const handleToggleActive = async (p: ProductWithVendor) => {
-    const { error } = await supabase
-      .from('products')
-      .update({ active: !p.active, updated_at: new Date().toISOString() })
-      .eq('id', p.id);
-    if (error) { toast('Erè, eseye ankò', 'error'); return; }
-    toast(!p.active ? 'Pwodwi aktive' : 'Pwodwi dezaktive');
-    loadProducts();
+    if (isAdCategory(p.category)) {
+      toast('Anons Kay/Machin jere pa Verifye / Apwouve / Renouvle.', 'info');
+      return;
+    }
+    await runAction(async () => {
+      const { error } = await supabase
+        .from('products')
+        .update({ active: !p.active, updated_at: new Date().toISOString() })
+        .eq('id', p.id);
+      if (error) throw error;
+    }, !p.active ? 'Pwodwi aktive' : 'Pwodwi dezaktive');
   };
 
   const handleExportExcel = () => {
@@ -171,18 +288,46 @@ export function AdminProductsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-4 gap-2.5">
-        {(['pending', 'active', 'rejected', 'draft'] as const).map((k) => (
-          <div key={k} className="bg-white border border-slate-200 rounded-xl p-3">
-            <p className="text-[11px] text-slate-500 mb-1">{STATUS_LABELS[k]}</p>
-            <p className="text-lg font-bold text-slate-900">{summary[k]}</p>
-          </div>
-        ))}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => { setScope('classified'); setFilter('all'); }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+            scope === 'classified' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'
+          }`}
+        >
+          Anons Kay / Machin
+        </button>
+        <button
+          type="button"
+          onClick={() => { setScope('all'); setFilter('all'); }}
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${
+            scope === 'all' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200'
+          }`}
+        >
+          Tout pwodwi
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
+        {scope === 'classified'
+          ? (['pending_payment', 'pending_review', 'active', 'rejected', 'expired'] as const).map((k) => (
+              <div key={k} className="bg-white border border-slate-200 rounded-xl p-3">
+                <p className="text-[11px] text-slate-500 mb-1">{LISTING_STATUS_LABELS[k]}</p>
+                <p className="text-lg font-bold text-slate-900">{(summary as Record<string, number>)[k] ?? 0}</p>
+              </div>
+            ))
+          : (['pending', 'active', 'rejected', 'draft'] as const).map((k) => (
+              <div key={k} className="bg-white border border-slate-200 rounded-xl p-3">
+                <p className="text-[11px] text-slate-500 mb-1">{STATUS_LABELS[k]}</p>
+                <p className="text-lg font-bold text-slate-900">{(summary as Record<string, number>)[k] ?? 0}</p>
+              </div>
+            ))}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="flex gap-1 p-1 bg-white rounded-xl border border-slate-200 overflow-x-auto no-scrollbar">
-          {STATUS_FILTERS.map((f) => (
+          {(scope === 'classified' ? STATUS_FILTERS_CLASSIFIED : STATUS_FILTERS_ALL).map((f) => (
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
@@ -227,6 +372,9 @@ export function AdminProductsPage() {
         <div className="space-y-2">
           {products.map((p) => {
             const cover = p.photos?.[p.cover_index] ?? p.photos?.[0] ?? p.image_url;
+            const listingStatus = isAdCategory(p.category)
+              ? resolveListingDisplayStatus(p, paymentsByProduct.get(p.id))
+              : null;
             return (
               <button
                 key={p.id}
@@ -244,12 +392,15 @@ export function AdminProductsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <p className="font-semibold text-slate-900 text-sm truncate">{p.name}</p>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 ${STATUS_STYLES[p.status]}`}>
-                        {STATUS_ICONS[p.status]}
-                        {STATUS_LABELS[p.status] ?? p.status}
-                      </span>
-                      {!p.active && p.status !== 'rejected' && (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-500">Pa vizib</span>
+                      {listingStatus ? (
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${LISTING_STATUS_STYLES[listingStatus]}`}>
+                          {LISTING_STATUS_LABELS[listingStatus]}
+                        </span>
+                      ) : (
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 ${STATUS_STYLES[p.status]}`}>
+                          {STATUS_ICONS[p.status]}
+                          {STATUS_LABELS[p.status] ?? p.status}
+                        </span>
                       )}
                     </div>
                     <p className="text-xs text-slate-500 truncate mt-0.5">
@@ -273,10 +424,20 @@ export function AdminProductsPage() {
       {selected && (
         <ProductDetailModal
           product={selected}
+          payment={paymentsByProduct.get(selected.id) ?? null}
+          listingStatus={
+            isAdCategory(selected.category)
+              ? resolveListingDisplayStatus(selected, paymentsByProduct.get(selected.id))
+              : null
+          }
+          busy={busy}
           onClose={() => setSelected(null)}
-          onApprove={() => handleApprove(selected.id)}
-          onReject={() => handleReject(selected.id)}
-          onToggleActive={() => handleToggleActive(selected)}
+          onApprove={() => void handleApprove(selected)}
+          onReject={() => void handleReject(selected)}
+          onToggleActive={() => void handleToggleActive(selected)}
+          onVerifyPayment={() => void handleVerifyPayment(selected)}
+          onWaiveFee={() => void handleWaiveFee(selected)}
+          onRenew={() => void handleRenewExpired(selected)}
         />
       )}
     </div>
@@ -284,16 +445,24 @@ export function AdminProductsPage() {
 }
 
 function ProductDetailModal({
-  product, onClose, onApprove, onReject, onToggleActive,
+  product, payment, listingStatus, busy,
+  onClose, onApprove, onReject, onToggleActive, onVerifyPayment, onWaiveFee, onRenew,
 }: {
   product: ProductWithVendor;
+  payment: AdPayment | null;
+  listingStatus: ListingDisplayStatus | null;
+  busy: boolean;
   onClose: () => void;
   onApprove: () => void;
   onReject: () => void;
   onToggleActive: () => void;
+  onVerifyPayment: () => void;
+  onWaiveFee: () => void;
+  onRenew: () => void;
 }) {
   const photos = product.photos ?? [];
   const cover = photos[product.cover_index] ?? photos[0] ?? product.image_url;
+  const isAd = isAdCategory(product.category);
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={onClose}>
@@ -302,7 +471,7 @@ function ProductDetailModal({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="sticky top-0 bg-white border-b border-slate-100 px-5 py-4 flex items-center justify-between z-10">
-          <h2 className="font-bold text-slate-900 text-base">Detay Pwodwi</h2>
+          <h2 className="font-bold text-slate-900 text-base">Detay {isAd ? 'Anons' : 'Pwodwi'}</h2>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition">
             <X size={16} />
           </button>
@@ -326,10 +495,16 @@ function ProductDetailModal({
           <div>
             <div className="flex items-center gap-2 flex-wrap mb-1">
               <h3 className="font-bold text-slate-900 text-lg">{product.name}</h3>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 ${STATUS_STYLES[product.status]}`}>
-                {STATUS_ICONS[product.status]}
-                {STATUS_LABELS[product.status] ?? product.status}
-              </span>
+              {listingStatus ? (
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${LISTING_STATUS_STYLES[listingStatus]}`}>
+                  {LISTING_STATUS_LABELS[listingStatus]}
+                </span>
+              ) : (
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold flex items-center gap-1 ${STATUS_STYLES[product.status]}`}>
+                  {STATUS_ICONS[product.status]}
+                  {STATUS_LABELS[product.status] ?? product.status}
+                </span>
+              )}
             </div>
             <p className="text-xl font-bold text-emerald-600">
               {product.price_on_request ? 'Pri sou demann' : formatHTG(product.price)}
@@ -345,24 +520,24 @@ function ProductDetailModal({
             <DetailRow label="Stok" value={String(product.stock)} />
             <DetailRow label="Vizib" value={product.active ? 'Wi' : 'Non'} />
             <DetailRow label="Pri sou demann" value={product.price_on_request ? 'Wi' : 'Non'} />
-            {product.ad_status && <DetailRow label="Estati Anons" value={product.ad_status} />}
             {product.ad_expires_at && <DetailRow label="Anons Ekspire" value={formatDateTime(product.ad_expires_at)} />}
           </div>
 
-          {/* Product stats */}
+          {isAd && (
+            <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-600 space-y-1">
+              <p className="font-semibold text-slate-800 flex items-center gap-1"><BadgeDollarSign size={14} /> Frè anons</p>
+              <p>Estati peman: {payment?.waived ? 'Waived' : (payment?.status ?? 'none')}</p>
+              {payment?.moncash_phone && <p>MonCash: {payment.moncash_phone}</p>}
+              {payment?.amount != null && <p>Montan: {formatHTG(Number(payment.amount))}</p>}
+              {payment?.notes && <p>Nòt: {payment.notes}</p>}
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-2">
             <StatCard icon={<Search size={14} />} label="Chache" value={product.search_count ?? 0} />
             <StatCard icon={<ShoppingBag size={14} />} label="Vann" value={product.sold_count ?? 0} />
             <StatCard icon={<Eye size={14} />} label="Gade" value={product.view_count ?? 0} />
           </div>
-
-          {(product.sold_count ?? 0) > 0 && product.first_sold_at && product.last_sold_at && (
-            <div className="bg-slate-50 rounded-xl p-3 text-xs text-slate-600 space-y-1">
-              <p>Premye vant: {formatDateTime(product.first_sold_at)}</p>
-              <p>Dènye vant: {formatDateTime(product.last_sold_at)}</p>
-              <p>Vitès vant: {product.sold_count} vant</p>
-            </div>
-          )}
 
           <div className="bg-slate-50 rounded-2xl p-4 space-y-2">
             <div className="flex items-center gap-2 mb-1">
@@ -394,32 +569,72 @@ function ProductDetailModal({
             </div>
           )}
 
-          <div className="flex gap-2 pt-2">
-            {product.status !== 'active' && (
+          <div className="flex flex-col gap-2 pt-2">
+            {isAd && listingStatus === 'pending_payment' && (
+              <>
+                <button
+                  disabled={busy}
+                  onClick={onVerifyPayment}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition disabled:opacity-50"
+                >
+                  {busy ? <Loader2 size={16} className="animate-spin" /> : <BadgeDollarSign size={16} />}
+                  Verifye peman
+                </button>
+                <button
+                  disabled={busy}
+                  onClick={onWaiveFee}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-amber-200 text-amber-800 text-sm font-semibold transition disabled:opacity-50"
+                >
+                  Waive Listing Fee
+                </button>
+              </>
+            )}
+            {isAd && listingStatus === 'pending_review' && (
+              <p className="text-center text-xs text-blue-700 bg-blue-50 border border-blue-100 rounded-xl py-2">
+                Frè verifye / waive — ou ka apwouve oswa rejte anons la.
+              </p>
+            )}
+            {isAd && listingStatus === 'expired' && (
               <button
-                onClick={onApprove}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition active:scale-95"
+                disabled={busy}
+                onClick={onRenew}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold transition disabled:opacity-50"
               >
-                <CheckCircle2 size={16} />
-                Apwouve
+                Renouvle anons ekspire
               </button>
             )}
-            {product.status !== 'rejected' && (
-              <button
-                onClick={onReject}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold transition active:scale-95"
-              >
-                <XCircle size={16} />
-                Rejte
-              </button>
-            )}
-            <button
-              onClick={onToggleActive}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold transition active:scale-95"
-            >
-              {product.active ? <EyeOff size={16} /> : <Eye size={16} />}
-              {product.active ? 'Kache' : 'Montre'}
-            </button>
+            <div className="flex gap-2">
+              {(!isAd || listingStatus === 'pending_review' || listingStatus === 'rejected') && (
+                <button
+                  disabled={busy}
+                  onClick={onApprove}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold transition active:scale-95 disabled:opacity-50"
+                >
+                  <CheckCircle2 size={16} />
+                  Apwouve
+                </button>
+              )}
+              {listingStatus !== 'rejected' && (
+                <button
+                  disabled={busy}
+                  onClick={onReject}
+                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold transition active:scale-95 disabled:opacity-50"
+                >
+                  <XCircle size={16} />
+                  Rejte
+                </button>
+              )}
+              {!isAd && (
+                <button
+                  disabled={busy}
+                  onClick={onToggleActive}
+                  className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-semibold transition active:scale-95"
+                >
+                  {product.active ? <EyeOff size={16} /> : <Eye size={16} />}
+                  {product.active ? 'Kache' : 'Montre'}
+                </button>
+              )}
+            </div>
           </div>
         </div>
       </div>

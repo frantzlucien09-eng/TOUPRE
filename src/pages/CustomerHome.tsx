@@ -8,6 +8,9 @@ import { Package, MapPin, Phone, Loader2, LogOut, ShoppingBag, Store, MessageCir
 import type { Order, Product, Vendor as VendorType, SocialPlatform, Notification } from '@/lib/types';
 import { formatHTG } from '@/lib/format';
 import { STATUS_LABELS_CUSTOMER, STATUS_STYLES } from '@/lib/orderStatus';
+import { isAdCategory } from '@/lib/categories';
+import { filterPublicCatalogProducts } from '@/lib/classifiedRules';
+import { softExpireListingIfNeeded } from '@/lib/listingActions';
 
 const SOCIAL_ICONS: Record<string, { icon: typeof Globe; bg: string }> = {
   instagram: { icon: Instagram, bg: 'bg-gradient-to-br from-amber-400 via-pink-500 to-purple-600' },
@@ -16,13 +19,18 @@ const SOCIAL_ICONS: Record<string, { icon: typeof Globe; bg: string }> = {
   globe: { icon: Globe, bg: 'bg-slate-600' },
 };
 
+type CatalogProduct = Product & {
+  vendor?: Pick<VendorType, 'id' | 'business_name' | 'phone' | 'user_id'> | null;
+};
+
 export function CustomerHome() {
   const { user, customer, signOut } = useAuth();
   const { toast } = useToast();
-  const [products, setProducts] = useState<Product[]>([]);
+  const [products, setProducts] = useState<CatalogProduct[]>([]);
   const [orders, setOrders] = useState<(Order & { vendor?: Pick<VendorType, 'business_name'> | null })[]>([]);
   const [socials, setSocials] = useState<SocialPlatform[]>([]);
   const [loading, setLoading] = useState(true);
+  const [contactBusyId, setContactBusyId] = useState<string | null>(null);
   const [notifOpen, setNotifOpen] = useState(false);
   const [tab, setTab] = useState<'home' | 'orders' | 'messages' | 'profile'>('home');
 
@@ -31,11 +39,20 @@ export function CustomerHome() {
     const load = async () => {
       const { data: prods } = await supabase
         .from('products')
-        .select('*')
+        .select('*, vendor:vendors(id, business_name, phone, user_id)')
         .eq('active', true)
         .order('created_at', { ascending: false })
-        .limit(12);
-      setProducts((prods as Product[]) ?? []);
+        .limit(40);
+      const raw = (prods as CatalogProduct[]) ?? [];
+      const reconciled = await Promise.all(
+        raw.map(async (p) => {
+          if (!isAdCategory(p.category)) return p;
+          const updated = await softExpireListingIfNeeded(p);
+          return { ...p, ...updated, vendor: p.vendor };
+        })
+      );
+      // Classifieds: only live approved ads; physical goods unchanged
+      setProducts(filterPublicCatalogProducts(reconciled).slice(0, 12));
 
       const { data: ords } = await supabase
         .from('orders')
@@ -67,6 +84,33 @@ export function CustomerHome() {
   const handleSignOut = async () => {
     await signOut();
     toast('Ou dekonekte');
+  };
+
+  const contactSellerMessage = async (p: CatalogProduct) => {
+    if (!user) return;
+    const vendorUserId = p.vendor?.user_id;
+    if (!vendorUserId) {
+      toast('Vandè a pa disponib pou mesaj.', 'error');
+      return;
+    }
+    setContactBusyId(p.id);
+    try {
+      const { data: rpcResult, error: rpcError } = await supabase.rpc('send_message', {
+        p_sender_id: user.id,
+        p_recipient_id: vendorUserId,
+        p_body: `Bonjou, mwen enterese nan anons ou: ${p.name}`,
+        p_product_id: p.id,
+      });
+      if (rpcError || (rpcResult && !rpcResult.success)) {
+        throw new Error(rpcResult?.error || rpcError?.message || 'Erè voye mesaj');
+      }
+      toast('Mesaj voye bay vandè a');
+      setTab('messages');
+    } catch (e) {
+      toast(e instanceof Error ? e.message : 'Erè voye mesaj', 'error');
+    } finally {
+      setContactBusyId(null);
+    }
   };
 
   if (loading) {
@@ -124,7 +168,9 @@ export function CustomerHome() {
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3">
-                {products.map((p) => (
+                {products.map((p) => {
+                  const isAd = isAdCategory(p.category);
+                  return (
                   <div key={p.id} className="rounded-xl bg-white border border-slate-100 overflow-hidden">
                     {p.image_url ? (
                       <img src={p.image_url} alt={p.name} className="w-full h-28 object-cover" />
@@ -135,10 +181,35 @@ export function CustomerHome() {
                     )}
                     <div className="p-2.5">
                       <p className="text-xs font-semibold text-slate-900 truncate">{p.name}</p>
-                      <p className="text-sm font-bold text-emerald-600 mt-0.5">{formatHTG(p.price)}</p>
+                      <p className="text-sm font-bold text-emerald-600 mt-0.5">
+                        {p.price_on_request ? 'Pri sou Demand' : formatHTG(p.price)}
+                      </p>
+                      {isAd && (
+                        <div className="mt-2 flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={contactBusyId === p.id}
+                            onClick={() => void contactSellerMessage(p)}
+                            className="flex-1 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-[10px] font-semibold flex items-center justify-center gap-1 disabled:opacity-50"
+                          >
+                            {contactBusyId === p.id ? <Loader2 size={12} className="animate-spin" /> : <MessageCircle size={12} />}
+                            Mesaj
+                          </button>
+                          {p.vendor?.phone ? (
+                            <a
+                              href={`tel:${p.vendor.phone}`}
+                              className="w-8 h-8 rounded-lg bg-slate-50 text-slate-600 flex items-center justify-center"
+                              aria-label="Rele vandè"
+                            >
+                              <Phone size={12} />
+                            </a>
+                          ) : null}
+                        </div>
+                      )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

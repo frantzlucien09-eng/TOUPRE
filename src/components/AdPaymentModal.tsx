@@ -1,8 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/lib/toast';
-import { AD_FEE, AD_DURATION_DAYS } from '@/lib/categories';
+import {
+  listingFeeForCategory,
+  loadListingFeeSettings,
+  type ListingFeeSettings,
+} from '@/lib/listingSettings';
 import { formatHTG } from '@/lib/format';
 import { Modal } from './Modal';
 import { AlertTriangle, Loader2, ShieldCheck, Smartphone } from 'lucide-react';
@@ -20,45 +24,57 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
   const { toast } = useToast();
   const [phone, setPhone] = useState(vendor?.moncash_phone ?? '');
   const [loading, setLoading] = useState(false);
+  const [settings, setSettings] = useState<ListingFeeSettings | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    void loadListingFeeSettings().then(setSettings);
+  }, [open]);
+
+  const fee = settings ? listingFeeForCategory(settings, category) : 2500;
+  const durationDays = settings?.listingDurationDays ?? 30;
 
   const pay = async () => {
     if (!phone.trim()) {
       toast('Tanpri antre nimewo MonCash ou', 'error');
       return;
     }
+    if (!vendor) return;
     setLoading(true);
     try {
-      const now = new Date();
-      const expires = new Date(now.getTime() + AD_DURATION_DAYS * 24 * 60 * 60 * 1000);
-
-      // Payment row is pending until MonCash/admin verification. Listing still
-      // activates so Kay/Machin ads remain usable without a separate approve UI.
       const { error: payError } = await supabase.from('ad_payments').insert({
-        vendor_id: vendor!.id,
+        vendor_id: vendor.id,
         product_id: productId,
-        amount: AD_FEE,
+        amount: fee,
         category,
         status: 'pending',
-        moncash_phone: phone,
+        moncash_phone: phone.trim(),
         paid_at: null,
+        waived: false,
       });
       if (payError) throw payError;
 
-      const { error: prodError } = await supabase.from('products').update({
-        ad_status: 'active',
-        ad_paid_at: now.toISOString(),
-        ad_expires_at: expires.toISOString(),
-        active: true,
-        updated_at: now.toISOString(),
-      }).eq('id', productId);
+      // Keep listing unpaid / not public until admin verifies fee and approves.
+      const { error: prodError } = await supabase
+        .from('products')
+        .update({
+          ad_status: 'draft',
+          active: false,
+          status: 'draft',
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', productId);
       if (prodError) throw prodError;
 
-      await supabase.from('vendors').update({
-        moncash_phone: phone,
-        updated_at: now.toISOString(),
-      }).eq('id', vendor!.id);
+      await supabase
+        .from('vendors')
+        .update({
+          moncash_phone: phone.trim(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', vendor.id);
 
-      toast('Anons pibliye. Demann peman MonCash anrejistre pou verifikasyon.');
+      toast('Demann peman anrejistre. Anons la rete Pending Payment jiskaske admin verifye.');
       onPaid();
     } catch (e) {
       toast(e instanceof Error ? e.message : 'Erè, eseye ankò', 'error');
@@ -68,21 +84,23 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Pibliye Anons">
+    <Modal open={open} onClose={onClose} title="Peye Frè Anons">
       <div className="space-y-4">
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex gap-2.5">
           <AlertTriangle size={20} className="text-amber-600 shrink-0 mt-0.5" />
           <p className="text-xs text-amber-800 leading-relaxed">
             Pou pibliye yon anons {category === 'kay' ? 'Kay' : 'Machin'}, w ap peye{' '}
-            <b>{formatHTG(AD_FEE)}</b> pa MonCash. Sa a se yon frè pou fè pwomosyon anons ou a —
-            se <b>PA</b> yon vant, ou ap toujou responsab konplete tranzaksyon an dirèkteman ak kliyan ki enterese a.
+            <b>{formatHTG(fee)}</b> pa MonCash. Sa a se yon frè anons sèlman —{' '}
+            <b>PA</b> yon vant sou TOUPRE. Achte/lwe fèt dirèkteman ak kliyan (Contact Seller).
+            Anons la pa piblik jiskaske peman verifye epi admin apwouve.
           </p>
         </div>
 
         <div className="bg-slate-50 rounded-xl p-3 space-y-1.5 text-sm">
-          <Row label="Frè piblisite" value={formatHTG(AD_FEE)} />
-          <Row label="Dire anons" value={`${AD_DURATION_DAYS} jou`} />
+          <Row label="Frè piblisite" value={formatHTG(fee)} />
+          <Row label="Dire anons" value={`${durationDays} jou`} />
           <Row label="Metòd peman" value="MonCash" />
+          <Row label="Apre peman" value="Pending Review" />
         </div>
 
         <div>
@@ -101,7 +119,10 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
 
         <div className="flex items-start gap-2 text-[11px] text-slate-500">
           <ShieldCheck size={14} className="text-emerald-600 mt-0.5 shrink-0" />
-          <p>Anons ou ap parèt piblikman pou {AD_DURATION_DAYS} jou. Peman MonCash rete an atant verifikasyon.</p>
+          <p>
+            Apre verifikasyon + apwobasyon, anons ou ap parèt piblikman pou {durationDays} jou.
+            Anons ekspire pa efase — ou ka renouvle yo pita.
+          </p>
         </div>
 
         <div className="flex gap-3">
@@ -109,12 +130,12 @@ export function AdPaymentModal({ open, onClose, productId, category, onPaid }: P
             Anile
           </button>
           <button
-            onClick={pay}
-            disabled={loading}
+            onClick={() => void pay()}
+            disabled={loading || !settings}
             className="flex-1 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition disabled:opacity-60"
           >
-            {loading ? <Loader2 size={18} className="animate-spin" /> : null}
-            Voye peman {formatHTG(AD_FEE)}
+            {loading || !settings ? <Loader2 size={18} className="animate-spin" /> : null}
+            Voye peman {formatHTG(fee)}
           </button>
         </div>
       </div>
