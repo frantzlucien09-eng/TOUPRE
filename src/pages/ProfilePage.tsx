@@ -3,13 +3,13 @@ import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/lib/toast';
 import { formatDate, formatDateTime } from '@/lib/format';
-import type { TrustHistory, VendorMonthlyStat, Vendor, Product, NameChangeRequest, AvatarReviewRequest } from '@/lib/types';
+import type { TrustHistory, VendorRanking, Vendor, Product, AvatarReviewRequest } from '@/lib/types';
 import { Header } from '@/components/Header';
 import { Modal } from '@/components/Modal';
 import { EmptyState } from '@/components/EmptyState';
 import { ProductCard } from '@/components/ProductCard';
 import {
-  Star, ClipboardList, Shield, Pencil, Settings, Trophy, Loader2, Save, Award, Info, Package, Heart,
+  Star, ClipboardList, Shield, Pencil, Settings, Trophy, Loader2, Save, Award, Info, Heart,
   Camera, KeyRound, Clock,
 } from 'lucide-react';
 
@@ -28,7 +28,7 @@ export function ProfilePage({ onGoOrdersDone, onGoSettings, onGoWithdraw, onGoFo
   const [pointsOpen, setPointsOpen] = useState(false);
   const [trustHistory, setTrustHistory] = useState<TrustHistory[]>([]);
   const [topTab, setTopTab] = useState<'zone' | 'national'>('zone');
-  const [topVendors, setTopVendors] = useState<(VendorMonthlyStat & { vendor: Vendor | null })[]>([]);
+  const [topVendors, setTopVendors] = useState<VendorRanking[]>([]);
   const [myProducts, setMyProducts] = useState<Product[]>([]);
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export function ProfilePage({ onGoOrdersDone, onGoSettings, onGoWithdraw, onGoFo
       .select('vendor_id, business_name, avatar_url, department, city, zone_rank, national_rank, score, total_sales_count, total_revenue')
       .order('score', { ascending: false })
       .limit(50)
-      .then(({ data }) => setTopVendors((data ?? []) as unknown as (VendorMonthlyStat & { vendor: Vendor | null })[]));
+      .then(({ data }) => setTopVendors((data ?? []) as VendorRanking[]));
 
     supabase
       .from('products')

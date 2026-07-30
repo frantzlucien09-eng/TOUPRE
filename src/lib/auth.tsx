@@ -57,6 +57,35 @@ async function ensureVendorFromOAuthIntent(user: User): Promise<void> {
   localStorage.removeItem(OAUTH_INTENT_KEY);
 }
 
+async function ensureCustomerFromOAuthIntent(user: User): Promise<void> {
+  const intent = localStorage.getItem(OAUTH_INTENT_KEY);
+  if (intent !== 'customer') return;
+
+  const { data: existing } = await supabase
+    .from('customers')
+    .select('id')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (!existing) {
+    const fullName =
+      (user.user_metadata?.full_name as string | undefined) ||
+      (user.user_metadata?.name as string | undefined) ||
+      user.email?.split('@')[0] ||
+      'Kliyan TOUPRE';
+
+    await supabase.from('customers').insert({
+      id: user.id,
+      full_name: fullName,
+      email: user.email ?? null,
+    });
+
+    await supabase.from('profiles').update({ role: 'customer' }).eq('user_id', user.id);
+  }
+
+  localStorage.removeItem(OAUTH_INTENT_KEY);
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
@@ -95,6 +124,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const bootstrapUser = async (u: User) => {
     await ensureVendorFromOAuthIntent(u);
+    await ensureCustomerFromOAuthIntent(u);
     return loadVendor(u.id);
   };
 

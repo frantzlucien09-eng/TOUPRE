@@ -11,10 +11,8 @@ import {
   SHOE_BRANDS, SHOE_CONDITIONS, SHOE_SIZES,
 } from '@/lib/categories';
 import { uploadProductPhoto, uploadProductVideo, deleteProductMedia } from '@/lib/media';
-import { supabase } from '@/lib/supabase';
-import { formatHTG } from '@/lib/format';
 import {
-  Loader2, Save, Trash2, X, Image as ImageIcon, Video, Plus, GripVertical, Star, Camera, ChevronRight,
+  Loader2, Save, Trash2, X, Video, Plus, Star, Camera,
 } from 'lucide-react';
 
 type Props = {
@@ -25,7 +23,7 @@ type Props = {
     price: number;
     stock: number;
     category: ProductCategory;
-    details: Record<string, any>;
+    details: Record<string, unknown>;
     photos: string[];
     cover_index: number;
     video_url: string | null;
@@ -55,7 +53,7 @@ export function ProductForm({ product, onSave, onDelete }: Props) {
   const [photos, setPhotos] = useState<string[]>(product?.photos ?? []);
   const [coverIndex, setCoverIndex] = useState(product?.cover_index ?? 0);
   const [videoUrl, setVideoUrl] = useState(product?.video_url ?? '');
-  const [details, setDetails] = useState<Record<string, any>>(product?.details ?? {});
+  const [details, setDetails] = useState<Record<string, unknown>>(product?.details ?? {});
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -321,23 +319,31 @@ function CategoryFields({
   category, details, setDetails,
 }: {
   category: ProductCategory;
-  details: Record<string, any>;
-  setDetails: (d: Record<string, any>) => void;
+  details: Record<string, unknown>;
+  setDetails: (d: Record<string, unknown>) => void;
 }) {
-  const set = (key: string, val: any) => setDetails({ ...details, [key]: val });
+  const set = (key: string, val: unknown) => setDetails({ ...details, [key]: val });
+  const str = (key: string) => {
+    const v = details[key];
+    return typeof v === 'string' || typeof v === 'number' ? String(v) : '';
+  };
+  const strArr = (key: string) => {
+    const v = details[key];
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+  };
 
   if (category === 'kay') {
     return (
       <Section title="Detay Kay">
-        <Select label="Tip anons" value={details.listing_type ?? ''} onChange={(v) => set('listing_type', v)} options={['Pou Lwe', 'Pou Vann']} />
-        <Select label="Tip kay" value={details.kay_type ?? ''} onChange={(v) => set('kay_type', v)} options={KAY_TYPES} />
+        <Select label="Tip anons" value={str('listing_type')} onChange={(v) => set('listing_type', v)} options={['Pou Lwe', 'Pou Vann']} />
+        <Select label="Tip kay" value={str('kay_type')} onChange={(v) => set('kay_type', v)} options={KAY_TYPES} />
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Kantite chanm" value={details.rooms ?? ''} onChange={(v) => set('rooms', v)} type="number" />
-          <Input label="Kantite twalèt" value={details.bathrooms ?? ''} onChange={(v) => set('bathrooms', v)} type="number" />
+          <Input label="Kantite chanm" value={str('rooms')} onChange={(v) => set('rooms', v)} type="number" />
+          <Input label="Kantite twalèt" value={str('bathrooms')} onChange={(v) => set('bathrooms', v)} type="number" />
         </div>
-        <Input label="Sipèfisi (m²)" value={details.area ?? ''} onChange={(v) => set('area', v)} type="number" />
-        <Input label="Etaj (si apatman)" value={details.floor ?? ''} onChange={(v) => set('floor', v)} />
-        <Input label="Adrès presi / Kote" value={details.address ?? ''} onChange={(v) => set('address', v)} placeholder="Dekri kote a ye byen" />
+        <Input label="Sipèfisi (m²)" value={str('area')} onChange={(v) => set('area', v)} type="number" />
+        <Input label="Etaj (si apatman)" value={str('floor')} onChange={(v) => set('floor', v)} />
+        <Input label="Adrès presi / Kote" value={str('address')} onChange={(v) => set('address', v)} placeholder="Dekri kote a ye byen" />
         <div>
           <p className="text-xs font-semibold text-slate-600 mb-2">Ekipman / Karakteristik</p>
           <div className="flex flex-wrap gap-2">
@@ -358,16 +364,16 @@ function CategoryFields({
   if (category === 'machin') {
     return (
       <Section title="Detay Machin">
-        <Select label="Mak" value={details.make ?? ''} onChange={(v) => set('make', v)} options={CAR_MAKES} />
-        <Input label="Modèl" value={details.model ?? ''} onChange={(v) => set('model', v)} />
+        <Select label="Mak" value={str('make')} onChange={(v) => set('make', v)} options={CAR_MAKES} />
+        <Input label="Modèl" value={str('model')} onChange={(v) => set('model', v)} />
         <div className="grid grid-cols-2 gap-3">
-          <Input label="Ane fabrikasyon" value={details.year ?? ''} onChange={(v) => set('year', v)} type="number" />
-          <Input label="Kilomtraj (mileyaj)" value={details.mileage ?? ''} onChange={(v) => set('mileage', v)} type="number" />
+          <Input label="Ane fabrikasyon" value={str('year')} onChange={(v) => set('year', v)} type="number" />
+          <Input label="Kilomtraj (mileyaj)" value={str('mileage')} onChange={(v) => set('mileage', v)} type="number" />
         </div>
-        <Select label="Tip motè" value={details.fuel ?? ''} onChange={(v) => set('fuel', v)} options={CAR_FUELS} />
-        <Select label="Transmisyon" value={details.transmission ?? ''} onChange={(v) => set('transmission', v)} options={CAR_TRANSMISSIONS} />
-        <Input label="Koulè" value={details.color ?? ''} onChange={(v) => set('color', v)} />
-        <Select label="Kondisyon" value={details.condition ?? ''} onChange={(v) => set('condition', v)} options={CAR_CONDITIONS} />
+        <Select label="Tip motè" value={str('fuel')} onChange={(v) => set('fuel', v)} options={CAR_FUELS} />
+        <Select label="Transmisyon" value={str('transmission')} onChange={(v) => set('transmission', v)} options={CAR_TRANSMISSIONS} />
+        <Input label="Koulè" value={str('color')} onChange={(v) => set('color', v)} />
+        <Select label="Kondisyon" value={str('condition')} onChange={(v) => set('condition', v)} options={CAR_CONDITIONS} />
         <div>
           <label className="flex items-center gap-2">
             <input type="checkbox" checked={!!details.has_papers} onChange={(e) => set('has_papers', e.target.checked)} className="w-4 h-4 accent-emerald-600" />
@@ -381,12 +387,12 @@ function CategoryFields({
   if (category === 'manje') {
     return (
       <Section title="Detay Manje">
-        <Select label="Tip manje" value={details.food_type ?? ''} onChange={(v) => set('food_type', v)} options={FOOD_TYPES} />
-        <Input label="Pòsyon / Gwosè" value={details.portion ?? ''} onChange={(v) => set('portion', v)} placeholder="Egz: 1 asyèt, 1 galon, 24oz" />
-        <Input label="Engredyan prensipal" value={details.ingredients ?? ''} onChange={(v) => set('ingredients', v)} placeholder="Egz: Ble, let, nwa..." />
-        <Select label="Disponiblite" value={details.availability ?? ''} onChange={(v) => set('availability', v)} options={FOOD_AVAILABILITY} />
-        {details.availability === 'Sou Kòmand Sèlman' && (
-          <Input label="Tan preparasyon (egz: 24 èdtan davans)" value={details.prep_time ?? ''} onChange={(v) => set('prep_time', v)} />
+        <Select label="Tip manje" value={str('food_type')} onChange={(v) => set('food_type', v)} options={FOOD_TYPES} />
+        <Input label="Pòsyon / Gwosè" value={str('portion')} onChange={(v) => set('portion', v)} placeholder="Egz: 1 asyèt, 1 galon, 24oz" />
+        <Input label="Engredyan prensipal" value={str('ingredients')} onChange={(v) => set('ingredients', v)} placeholder="Egz: Ble, let, nwa..." />
+        <Select label="Disponiblite" value={str('availability')} onChange={(v) => set('availability', v)} options={FOOD_AVAILABILITY} />
+        {str('availability') === 'Sou Kòmand Sèlman' && (
+          <Input label="Tan preparasyon (egz: 24 èdtan davans)" value={str('prep_time')} onChange={(v) => set('prep_time', v)} />
         )}
       </Section>
     );
@@ -395,11 +401,11 @@ function CategoryFields({
   if (category === 'rad') {
     return (
       <Section title="Detay Rad">
-        <Select label="Tip rad" value={details.clothing_type ?? ''} onChange={(v) => set('clothing_type', v)} options={CLOTHING_TYPES} />
-        <MultiChip label="Mezi / Gwosè disponib" value={details.sizes ?? []} onChange={(v) => set('sizes', v)} options={CLOTHING_SIZES} />
-        <Input label="Koulè(y) disponib" value={details.colors ?? ''} onChange={(v) => set('colors', v)} placeholder="Egz: Nwa, Ble, Wouj" />
-        <Input label="Materyèl (opsyonèl)" value={details.material ?? ''} onChange={(v) => set('material', v)} placeholder="Egz: Koton, Polyestè" />
-        <Select label="Sèks / Kategori" value={details.sex ?? ''} onChange={(v) => set('sex', v)} options={CLOTHING_SEXES} />
+        <Select label="Tip rad" value={str('clothing_type')} onChange={(v) => set('clothing_type', v)} options={CLOTHING_TYPES} />
+        <MultiChip label="Mezi / Gwosè disponib" value={strArr('sizes')} onChange={(v) => set('sizes', v)} options={CLOTHING_SIZES} />
+        <Input label="Koulè(y) disponib" value={str('colors')} onChange={(v) => set('colors', v)} placeholder="Egz: Nwa, Ble, Wouj" />
+        <Input label="Materyèl (opsyonèl)" value={str('material')} onChange={(v) => set('material', v)} placeholder="Egz: Koton, Polyestè" />
+        <Select label="Sèks / Kategori" value={str('sex')} onChange={(v) => set('sex', v)} options={CLOTHING_SEXES} />
       </Section>
     );
   }
@@ -407,11 +413,11 @@ function CategoryFields({
   if (category === 'soulye') {
     return (
       <Section title="Detay Soulye">
-        <Select label="Mak" value={details.brand ?? ''} onChange={(v) => set('brand', v)} options={SHOE_BRANDS} />
-        <Input label="Modèl" value={details.model ?? ''} onChange={(v) => set('model', v)} />
-        <MultiChip label="Pwentiraj / Gwosè disponib" value={details.sizes ?? []} onChange={(v) => set('sizes', v)} options={SHOE_SIZES} />
-        <Input label="Koulè" value={details.color ?? ''} onChange={(v) => set('color', v)} />
-        <Select label="Kondisyon" value={details.condition ?? ''} onChange={(v) => set('condition', v)} options={SHOE_CONDITIONS} />
+        <Select label="Mak" value={str('brand')} onChange={(v) => set('brand', v)} options={SHOE_BRANDS} />
+        <Input label="Modèl" value={str('model')} onChange={(v) => set('model', v)} />
+        <MultiChip label="Pwentiraj / Gwosè disponib" value={strArr('sizes')} onChange={(v) => set('sizes', v)} options={SHOE_SIZES} />
+        <Input label="Koulè" value={str('color')} onChange={(v) => set('color', v)} />
+        <Select label="Kondisyon" value={str('condition')} onChange={(v) => set('condition', v)} options={SHOE_CONDITIONS} />
       </Section>
     );
   }

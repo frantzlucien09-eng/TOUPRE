@@ -2,9 +2,8 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/lib/toast';
-import { useConfirm } from '@/lib/confirm';
 import { formatHTG, formatDateTime, relativeTime } from '@/lib/format';
-import type { Order, Notification } from '@/lib/types';
+import type { Order } from '@/lib/types';
 import { Header } from '@/components/Header';
 import { Modal } from '@/components/Modal';
 import { EmptyState } from '@/components/EmptyState';
@@ -20,7 +19,6 @@ type Tab = 'new' | 'active' | 'done';
 export function OrdersPage({ initialFilter, initialTab, onOpenOrder }: { initialFilter?: 'today' | 'new'; initialTab?: 'new' | 'active' | 'done'; onOpenOrder?: (order: Order) => void }) {
   const { vendor } = useAuth();
   const { toast } = useToast();
-  const { confirm } = useConfirm();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>(initialTab ?? (initialFilter === 'today' ? 'new' : 'new'));

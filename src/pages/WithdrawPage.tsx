@@ -109,7 +109,7 @@ export function WithdrawPage({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="pb-24">
-      <Header title="Retire Lajan" subtitle="Via MonCash" />
+      <Header title="Retire Lajan" subtitle="Via MonCash" onBack={onBack} />
 
       <div className="px-4 pt-4 space-y-4">
         <div className="bg-gradient-to-br from-emerald-600 to-emerald-700 rounded-2xl p-5 text-white shadow-sm">

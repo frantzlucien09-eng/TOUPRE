@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { formatHTG, isToday, relativeTime } from '@/lib/format';
-import type { Order, Notification, Product } from '@/lib/types';
+import type { Order, Product } from '@/lib/types';
 import { Header } from '@/components/Header';
 import { EmptyState } from '@/components/EmptyState';
 import { ProductCard } from '@/components/ProductCard';

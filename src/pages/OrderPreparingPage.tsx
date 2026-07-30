@@ -211,7 +211,6 @@ export function OrderPreparingPage({ order, onBack, onDelivering, onMessage, onS
             {steps.map((step, i) => {
               const isDone = i < currentIndex + 1;
               const isNext = i === currentIndex + 1;
-              const isFuture = i > currentIndex + 1;
               const isLoadingThis = loadingStep === step.key;
 
               if (isDone) {

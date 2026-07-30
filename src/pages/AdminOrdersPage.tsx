@@ -156,7 +156,7 @@ export function AdminOrdersPage() {
     const headers = Object.keys(rows[0] ?? { ID: '' });
     const csv = [
       headers.join(','),
-      ...rows.map((r) => headers.map((h) => `"${String((r as any)[h] ?? '').replace(/"/g, '""')}"`).join(',')),
+      ...rows.map((r) => headers.map((h) => `"${String((r as Record<string, string | number>)[h] ?? '').replace(/"/g, '""')}"`).join(',')),
     ].join('\n');
 
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });

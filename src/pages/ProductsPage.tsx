@@ -3,8 +3,8 @@ import { useAuth } from '@/lib/auth';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/lib/toast';
 import { useConfirm } from '@/lib/confirm';
-import { formatHTG, formatDateTime, formatDate } from '@/lib/format';
-import { CATEGORY_ICON, CATEGORY_LABEL, isAdCategory, AD_FEE, AD_DURATION_DAYS } from '@/lib/categories';
+import { formatHTG, formatDate } from '@/lib/format';
+import { CATEGORY_ICON, CATEGORY_LABEL, isAdCategory, AD_FEE } from '@/lib/categories';
 import type { Product, ProductCategory } from '@/lib/types';
 import { Header } from '@/components/Header';
 import { Modal } from '@/components/Modal';
@@ -13,8 +13,8 @@ import { ProductForm } from '@/components/ProductForm';
 import { ProductCard } from '@/components/ProductCard';
 import { AdPaymentModal } from '@/components/AdPaymentModal';
 import {
-  Package, Plus, ChevronRight, Trash2, Loader2, Image as ImageIcon, Star, Video, Pencil,
-  AlertTriangle, CheckCircle2, Clock, Eye, EyeOff, MapPin, Phone, MessageSquare, BadgeCheck,
+  Package, Plus, Trash2, Loader2, Image as ImageIcon, Pencil,
+  AlertTriangle, Clock, Eye, EyeOff, BadgeCheck,
 } from 'lucide-react';
 
 export function ProductsPage() {
@@ -202,7 +202,7 @@ export function ProductsPage() {
           product={null}
           onSave={async (vals) => {
             const isAd = isAdCategory(vals.category);
-            const insertVals: any = {
+            const insertVals: Record<string, unknown> = {
               ...vals,
               vendor_id: vendor.id,
               active: isAd ? false : true,

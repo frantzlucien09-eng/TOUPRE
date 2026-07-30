@@ -1,4 +1,4 @@
-import { Bell } from 'lucide-react';
+import { Bell, ArrowLeft } from 'lucide-react';
 import { Logo } from './Logo';
 
 type HeaderProps = {
@@ -6,14 +6,28 @@ type HeaderProps = {
   subtitle?: string;
   notificationCount?: number;
   onNotifications?: () => void;
+  /** Optional back action — shown left of the title block when provided. */
+  onBack?: () => void;
 };
 
-export function Header({ title, subtitle, notificationCount = 0, onNotifications }: HeaderProps) {
+export function Header({ title, subtitle, notificationCount = 0, onNotifications, onBack }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-100">
       <div className="px-4 pt-3 pb-3">
         <div className="flex items-center justify-between">
-          <Logo size="sm" />
+          <div className="flex items-center gap-2 min-w-0">
+            {onBack && (
+              <button
+                type="button"
+                onClick={onBack}
+                className="w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-700 hover:bg-slate-200 active:scale-90 transition shrink-0"
+                aria-label="Retounen"
+              >
+                <ArrowLeft size={18} />
+              </button>
+            )}
+            <Logo size="sm" />
+          </div>
           <button
             onClick={onNotifications}
             className="relative w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-700 hover:bg-slate-200 active:scale-90 transition"

@@ -6,8 +6,8 @@ import { Logo } from '@/components/Logo';
 import type { VendorKyc, KycStatus } from '@/lib/types';
 import { CATEGORIES } from '@/lib/categories';
 import {
-  Loader2, Upload, Camera, CheckCircle2, XCircle, Clock, AlertCircle,
-  User, Store, Phone, MapPin, CreditCard, FileText, ShieldCheck, ArrowRight, ArrowLeft,
+  Loader2, Camera, CheckCircle2, XCircle, Clock, AlertCircle,
+  User, Store, Phone, MapPin, CreditCard, ShieldCheck, ArrowRight, ArrowLeft,
 } from 'lucide-react';
 
 const STEPS = [
@@ -18,8 +18,6 @@ const STEPS = [
   { key: 'payment', label: 'Peman', icon: CreditCard },
   { key: 'consent', label: 'Konsantman', icon: ShieldCheck },
 ] as const;
-
-type StepKey = typeof STEPS[number]['key'];
 
 const REFERRAL_SOURCES = [
   { value: 'vendor_referral', label: 'Yon lòt vandè (gen kòd referans)' },
@@ -428,7 +426,7 @@ export function KycOnboardingPage() {
 }
 
 function KycStatusView({ kyc }: { kyc: VendorKyc }) {
-  const { vendor, signOut } = useAuth();
+  const { signOut } = useAuth();
   const status = kyc.status;
   const config = {
     pending: { icon: Clock, color: 'amber', title: 'An Revizyon', desc: 'Admin ap egzamine dosye ou. Sa ka pran kèk tan.' },

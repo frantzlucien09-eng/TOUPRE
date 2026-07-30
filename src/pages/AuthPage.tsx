@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
-import { sendEmailOtp, verifyEmailOtp, resetPasswordViaOtp } from '@/lib/emailOtp';
+import { sendEmailOtp, resetPasswordViaOtp } from '@/lib/emailOtp';
 import { Logo } from '@/components/Logo';
 import { Mail, Lock, Loader2, ArrowLeft, ArrowRight, KeyRound, ShieldCheck, User, MapPin, Phone, CheckCircle2, FileText } from 'lucide-react';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
@@ -22,8 +22,6 @@ const REG_STEPS = [
   { key: 'password', label: 'Modpas', icon: Lock },
   { key: 'terms', label: 'Tèm ak Kondisyon', icon: FileText },
 ] as const;
-
-type RegStepKey = typeof REG_STEPS[number]['key'];
 
 export function AuthPage() {
   const [mode, setMode] = useState<Mode>('login');

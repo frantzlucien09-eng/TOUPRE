@@ -37,7 +37,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     const { data } = await supabase
       .from('admin_profiles')
       .select('id, email, role, full_name')
-      .eq('id', uid)
+      .eq('user_id', uid)
+      .eq('is_active', true)
+      .is('deleted_at', null)
       .maybeSingle();
     setAdmin(data as AdminProfile | null);
   };

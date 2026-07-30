@@ -6,7 +6,7 @@ import { formatDateTime, relativeTime } from '@/lib/format';
 import type { VendorKyc, Vendor } from '@/lib/types';
 import {
   BadgeCheck, CheckCircle2, XCircle, Search, Loader2, User, CreditCard,
-  Camera, Phone, MapPin, Building2, FileText, ChevronRight, Eye, X,
+  Camera, MapPin, Building2, FileText, ChevronRight, Eye, X,
 } from 'lucide-react';
 
 type KycWithVendor = VendorKyc & { vendor?: Pick<Vendor, 'business_name' | 'email' | 'phone' | 'avatar_url'> | null };

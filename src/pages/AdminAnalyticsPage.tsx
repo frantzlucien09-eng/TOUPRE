@@ -127,9 +127,9 @@ export function AdminAnalyticsPage({ initialTab }: { initialTab?: 'overview' | '
           monthly: d.monthly ?? [],
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[admin analytics]', err);
-      setError(err?.message ?? 'Erè, eseye ankò');
+      setError(err instanceof Error ? err.message : 'Erè, eseye ankò');
     } finally {
       setLoading(false);
       setRefreshing(false);

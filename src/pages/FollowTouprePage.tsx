@@ -40,7 +40,7 @@ export function FollowTouprePage({ onBack }: { onBack: () => void }) {
 
   return (
     <div className="pb-24 min-h-screen bg-slate-50">
-      <Header title="Swiv TOUPRE" subtitle="Swiv nou sou rezo sosyal yo" />
+      <Header title="Swiv TOUPRE" subtitle="Swiv nou sou rezo sosyal yo" onBack={onBack} />
 
       <div className="px-4 pt-4">
         <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm text-center mb-4">

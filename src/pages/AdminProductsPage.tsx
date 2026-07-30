@@ -6,7 +6,7 @@ import { CATEGORY_LABEL } from '@/lib/categories';
 import type { Product, Vendor } from '@/lib/types';
 import {
   Search, Loader2, Package, ChevronRight, X, Store, CheckCircle2,
-  XCircle, Clock, Eye, EyeOff, Ban, FileSpreadsheet, FileText, Tag, ShoppingBag,
+  XCircle, Clock, Eye, EyeOff, FileSpreadsheet, Tag, ShoppingBag,
 } from 'lucide-react';
 
 type ProductWithVendor = Product & {
@@ -157,7 +157,7 @@ export function AdminProductsPage() {
     const headers = Object.keys(rows[0] ?? { ID: '' });
     const csv = [
       headers.join(','),
-      ...rows.map((r) => headers.map((h) => `"${String((r as any)[h] ?? '').replace(/"/g, '""')}"`).join(',')),
+      ...rows.map((r) => headers.map((h) => `"${String((r as Record<string, string | number>)[h] ?? '').replace(/"/g, '""')}"`).join(',')),
     ].join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);

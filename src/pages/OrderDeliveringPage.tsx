@@ -7,7 +7,7 @@ import { uploadDeliveryProof } from '@/lib/media';
 import { orderStatusRpcFailed } from '@/lib/orderRpc';
 import type { Order } from '@/lib/types';
 import {
-  ArrowLeft, MapPin, Phone, MessageCircle, Check, Navigation, Clock, Package, Loader2, Camera, X, Image as ImageIcon,
+  ArrowLeft, MapPin, Phone, MessageCircle, Check, Navigation, Clock, Loader2, Camera, X, Image as ImageIcon,
 } from 'lucide-react';
 
 type Props = {

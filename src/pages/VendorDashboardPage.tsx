@@ -57,9 +57,9 @@ export function VendorDashboardPage({ onBack }: { onBack: () => void }) {
           month: d.month ?? { sales: 0, orders: 0 },
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('[vendor dashboard]', err);
-      setError(err?.message ?? 'Erè, eseye ankò');
+      setError(err instanceof Error ? err.message : 'Erè, eseye ankò');
     } finally {
       setLoading(false);
       setRefreshing(false);

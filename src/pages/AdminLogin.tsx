@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { useToast } from '@/lib/toast';
 import { Logo } from '@/components/Logo';
-import { Shield, Mail, Lock, Loader2 } from 'lucide-react';
+import { Mail, Lock, Loader2 } from 'lucide-react';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
 
 export function AdminLogin() {
@@ -21,7 +21,9 @@ export function AdminLogin() {
       const { data: adminRow } = await supabase
         .from('admin_profiles')
         .select('id, role')
-        .eq('id', data.user?.id)
+        .eq('user_id', data.user?.id)
+        .eq('is_active', true)
+        .is('deleted_at', null)
         .maybeSingle();
 
       if (!adminRow) {

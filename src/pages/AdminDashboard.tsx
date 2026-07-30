@@ -298,10 +298,10 @@ function activityColor(action: string): string {
   return 'bg-emerald-500';
 }
 
-function DashboardView({ stats, recentActivity, dateRange }: {
+function DashboardView({ stats, recentActivity }: {
   stats: { vendors: number; activeVendors: number; ordersToday: number; revenueToday: number; pendingKyc: number; pendingWithdrawals: number; periodRevenue: number; periodOrders: number };
   recentActivity: ActivityEntry[];
-  dateRange: DateRangeKey;
+  dateRange?: DateRangeKey;
 }) {
   const cards = [
     { label: 'Total Vandè', value: String(stats.vendors), color: 'text-slate-900' },

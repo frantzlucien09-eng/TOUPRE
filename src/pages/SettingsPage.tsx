@@ -60,7 +60,7 @@ export function SettingsPage({ onBack }: Props) {
 
   return (
     <div className="pb-24">
-      <Header title="Paramèt" />
+      <Header title="Paramèt" onBack={onBack} />
 
       <div className="px-4 pt-4 space-y-2">
         {items.map((it) => {
@@ -365,7 +365,7 @@ function ContactForm({ vendor, onDone }: { vendor: Vendor; onDone: () => void })
 function AddressForm({
   vendor, departments, citiesFor, onDone,
 }: {
-  vendor: any;
+  vendor: Vendor;
   departments: string[];
   citiesFor: (d: string) => string[];
   onDone: () => void;

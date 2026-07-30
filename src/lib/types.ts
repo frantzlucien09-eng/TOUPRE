@@ -79,6 +79,8 @@ export type ProductCategory = 'kay' | 'machin' | 'manje' | 'rad' | 'soulye' | 'l
 
 export type AdStatus = 'draft' | 'active' | 'sold' | 'expired' | null;
 
+export type ProductModerationStatus = 'pending' | 'active' | 'rejected' | 'draft';
+
 export type Product = {
   id: string;
   vendor_id: string;
@@ -88,7 +90,11 @@ export type Product = {
   image_url: string | null;
   stock: number;
   active: boolean;
+  /** Admin moderation status. */
+  status: ProductModerationStatus | string;
   category: ProductCategory | null;
+  // Flexible category-specific payload (kay/machin/manje/rad/soulye).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   details: Record<string, any>;
   photos: string[];
   cover_index: number;
@@ -97,6 +103,11 @@ export type Product = {
   ad_status: AdStatus;
   ad_paid_at: string | null;
   ad_expires_at: string | null;
+  search_count?: number;
+  view_count?: number;
+  sold_count?: number;
+  first_sold_at?: string | null;
+  last_sold_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -200,6 +211,20 @@ export type VendorMonthlyStat = {
   national_rank: number | null;
   computed_at: string;
   vendor?: Pick<Vendor, 'id' | 'business_name' | 'avatar_url' | 'department' | 'city'> | null;
+};
+
+/** Flat row from `vendor_rankings` used on Profile leaderboard. */
+export type VendorRanking = {
+  vendor_id: string;
+  zone_rank: number | null;
+  national_rank: number | null;
+  score: number;
+  total_sales_count: number;
+  total_revenue: number;
+  department: string | null;
+  city: string | null;
+  business_name: string | null;
+  avatar_url: string | null;
 };
 
 export type SocialPlatform = {

@@ -4,8 +4,8 @@ import { useAuth } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
 import { Logo } from '@/components/Logo';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
-import { Package, MapPin, Phone, Loader2, LogOut, ShoppingBag, Store, MessageCircle, Bell, ExternalLink, Instagram, Music2, Facebook, Globe, Mail } from 'lucide-react';
-import type { Order, Product, Vendor as VendorType, SocialPlatform } from '@/lib/types';
+import { Package, MapPin, Phone, Loader2, LogOut, ShoppingBag, Store, MessageCircle, Bell, ExternalLink, Instagram, Music2, Facebook, Globe } from 'lucide-react';
+import type { Order, Product, Vendor as VendorType, SocialPlatform, Notification } from '@/lib/types';
 import { formatHTG } from '@/lib/format';
 import { STATUS_LABELS_CUSTOMER, STATUS_STYLES } from '@/lib/orderStatus';
 
@@ -290,7 +290,7 @@ export function CustomerHome() {
 }
 
 function CustomerNotifications({ userId }: { userId: string }) {
-  const [notifs, setNotifs] = useState<any[]>([]);
+  const [notifs, setNotifs] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
