@@ -129,20 +129,44 @@ export type OrderItem = {
   name: string;
   qty: number;
   price: number;
+  /** Alternate keys written by place_order jsonb */
+  product_name?: string;
+  quantity?: number;
+  unit_price?: number;
+  subtotal?: number;
+};
+
+export type SavedAddress = {
+  id: string;
+  user_id: string;
+  label: string | null;
+  full_name: string | null;
+  phone: string | null;
+  address: string | null;
+  city: string | null;
+  department: string | null;
+  is_default: boolean;
+  created_at: string;
+  updated_at: string;
 };
 
 export type Order = {
   id: string;
+  order_number?: string | null;
   customer_id: string | null;
   vendor_id: string;
   items: OrderItem[];
+  subtotal?: number;
+  shipping_cost?: number;
   total: number;
   delivery_type: 'delivery' | 'pickup';
   status: OrderStatus;
   reject_reason: string | null;
   delivery_note: string | null;
   delivery_proof_url: string | null;
-  payment_status: 'pending' | 'paid' | null;
+  shipping_address?: Record<string, unknown> | null;
+  notes?: string | null;
+  payment_status: 'pending' | 'paid' | 'unpaid' | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -161,6 +185,7 @@ export type OrderStatus =
 
 export type Customer = {
   id: string;
+  user_id?: string | null;
   full_name: string;
   phone: string | null;
   email: string | null;
@@ -168,6 +193,24 @@ export type Customer = {
   city: string | null;
   address: string | null;
   created_at: string;
+  deleted_at?: string | null;
+};
+
+export type Cart = {
+  id: string;
+  user_id: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CartItem = {
+  id: string;
+  cart_id: string;
+  product_id: string;
+  quantity: number;
+  created_at: string;
+  updated_at: string;
+  product?: Product | null;
 };
 
 export type Withdrawal = {
@@ -188,6 +231,9 @@ export type Notification = {
   title: string;
   body: string | null;
   read: boolean;
+  is_read?: boolean;
+  read_at?: string | null;
+  data?: Record<string, unknown> | null;
   created_at: string;
 };
 
