@@ -4,7 +4,12 @@ import { useAuth } from '@/lib/auth';
 import { useToast } from '@/lib/toast';
 import { Logo } from '@/components/Logo';
 import { GoogleSignInButton } from '@/components/GoogleSignInButton';
-import { Package, MapPin, Phone, Loader2, LogOut, ShoppingBag, Store, MessageCircle, Bell, ExternalLink, Instagram, Music2, Facebook, Globe } from 'lucide-react';
+import { ProductCard } from '@/components/ProductCard';
+import { CustomerProductDetail } from '@/pages/CustomerProductDetail';
+import { CustomerCartPage } from '@/pages/CustomerCartPage';
+import { CustomerCheckoutPage } from '@/pages/CustomerCheckoutPage';
+import { getCartCount } from '@/lib/cart';
+import { Package, MapPin, Phone, Loader2, LogOut, ShoppingBag, Store, MessageCircle, Bell, ExternalLink, Instagram, Music2, Facebook, Globe, ShoppingCart } from 'lucide-react';
 import type { Order, Product, Vendor as VendorType, SocialPlatform, Notification } from '@/lib/types';
 import { formatHTG } from '@/lib/format';
 import { STATUS_LABELS_CUSTOMER, STATUS_STYLES } from '@/lib/orderStatus';
@@ -16,6 +21,8 @@ const SOCIAL_ICONS: Record<string, { icon: typeof Globe; bg: string }> = {
   globe: { icon: Globe, bg: 'bg-slate-600' },
 };
 
+type Screen = 'main' | 'product' | 'cart' | 'checkout';
+
 export function CustomerHome() {
   const { user, customer, signOut } = useAuth();
   const { toast } = useToast();
@@ -25,6 +32,29 @@ export function CustomerHome() {
   const [loading, setLoading] = useState(true);
   const [notifOpen, setNotifOpen] = useState(false);
   const [tab, setTab] = useState<'home' | 'orders' | 'messages' | 'profile'>('home');
+  const [screen, setScreen] = useState<Screen>('main');
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [cartCount, setCartCount] = useState(0);
+
+  const refreshCartCount = async () => {
+    if (!user) return;
+    try {
+      setCartCount(await getCartCount(user.id));
+    } catch {
+      // cart table may be unavailable until migration applied
+    }
+  };
+
+  const reloadOrders = async () => {
+    if (!user) return;
+    const { data: ords } = await supabase
+      .from('orders')
+      .select('*, vendor:vendors(business_name)')
+      .eq('customer_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(10);
+    setOrders((ords as (Order & { vendor?: Pick<VendorType, 'business_name'> | null })[]) ?? []);
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -34,16 +64,11 @@ export function CustomerHome() {
         .select('*')
         .eq('active', true)
         .order('created_at', { ascending: false })
-        .limit(12);
+        .limit(24);
       setProducts((prods as Product[]) ?? []);
 
-      const { data: ords } = await supabase
-        .from('orders')
-        .select('*, vendor:vendors(business_name)')
-        .eq('customer_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(10);
-      setOrders((ords as (Order & { vendor?: Pick<VendorType, 'business_name'> | null })[]) ?? []);
+      await reloadOrders();
+      await refreshCartCount();
       setLoading(false);
     };
     load();
@@ -62,6 +87,7 @@ export function CustomerHome() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'social_platforms' }, loadSocials)
       .subscribe();
     return () => { supabase.removeChannel(channel); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const handleSignOut = async () => {
@@ -78,19 +104,71 @@ export function CustomerHome() {
     );
   }
 
+  if (screen === 'product' && selectedProductId) {
+    return (
+      <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative">
+        <CustomerProductDetail
+          productId={selectedProductId}
+          onBack={() => { setScreen('main'); setSelectedProductId(null); }}
+          onAddedToCart={() => { refreshCartCount(); }}
+        />
+      </div>
+    );
+  }
+
+  if (screen === 'cart') {
+    return (
+      <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative">
+        <CustomerCartPage
+          onBack={() => { setScreen('main'); refreshCartCount(); }}
+          onCheckout={() => setScreen('checkout')}
+        />
+      </div>
+    );
+  }
+
+  if (screen === 'checkout') {
+    return (
+      <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative">
+        <CustomerCheckoutPage
+          onBack={() => setScreen('cart')}
+          onSuccess={() => {
+            refreshCartCount();
+            reloadOrders();
+            setTab('orders');
+            setScreen('main');
+          }}
+        />
+      </div>
+    );
+  }
+
   const displayName = customer?.full_name || user?.email?.split('@')[0] || 'Kliyan';
 
   return (
     <div className="min-h-screen bg-slate-50 max-w-md mx-auto relative pb-20">
-      {/* Header */}
       <header className="bg-white border-b border-slate-100 px-4 py-3 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-2">
           <Logo size="sm" />
           <span className="font-bold text-slate-900 text-sm">TOUPRE</span>
         </div>
-        <button onClick={() => setNotifOpen(true)} className="relative w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 active:scale-90 transition">
-          <Bell size={18} />
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setScreen('cart')}
+            className="relative w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 active:scale-90 transition"
+            aria-label="Panye"
+          >
+            <ShoppingCart size={18} />
+            {cartCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-emerald-600 text-white text-[10px] font-bold flex items-center justify-center">
+                {cartCount > 9 ? '9+' : cartCount}
+              </span>
+            )}
+          </button>
+          <button onClick={() => setNotifOpen(true)} className="relative w-9 h-9 rounded-full bg-slate-100 flex items-center justify-center text-slate-600 active:scale-90 transition">
+            <Bell size={18} />
+          </button>
+        </div>
       </header>
 
       {tab === 'home' && (
@@ -100,7 +178,6 @@ export function CustomerHome() {
             <p className="text-sm text-slate-500 mt-1">Mache TOUPRE — chache pwodwi, pase kòmand, swiv livrezon.</p>
           </div>
 
-          {/* Categories placeholder */}
           <div className="grid grid-cols-4 gap-2">
             {[
               { icon: Store, label: 'Kay' },
@@ -115,7 +192,6 @@ export function CustomerHome() {
             ))}
           </div>
 
-          {/* Products */}
           <div>
             <h2 className="font-bold text-slate-900 text-sm mb-2">Pwodwi disponib</h2>
             {products.length === 0 ? (
@@ -125,25 +201,19 @@ export function CustomerHome() {
             ) : (
               <div className="grid grid-cols-2 gap-3">
                 {products.map((p) => (
-                  <div key={p.id} className="rounded-xl bg-white border border-slate-100 overflow-hidden">
-                    {p.image_url ? (
-                      <img src={p.image_url} alt={p.name} className="w-full h-28 object-cover" />
-                    ) : (
-                      <div className="w-full h-28 bg-slate-100 flex items-center justify-center">
-                        <Package size={24} className="text-slate-300" />
-                      </div>
-                    )}
-                    <div className="p-2.5">
-                      <p className="text-xs font-semibold text-slate-900 truncate">{p.name}</p>
-                      <p className="text-sm font-bold text-emerald-600 mt-0.5">{formatHTG(p.price)}</p>
-                    </div>
-                  </div>
+                  <ProductCard
+                    key={p.id}
+                    product={p}
+                    onClick={() => {
+                      setSelectedProductId(p.id);
+                      setScreen('product');
+                    }}
+                  />
                 ))}
               </div>
             )}
           </div>
 
-          {/* Follow us on social media */}
           {socials.length > 0 && (
             <div>
               <h2 className="font-bold text-slate-900 text-sm mb-2">Swiv nou</h2>
@@ -193,9 +263,9 @@ export function CustomerHome() {
                       {statusLabel}
                     </span>
                   </div>
-                  <p className="text-sm font-semibold text-slate-900">{formatHTG(o.total)}</p>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    {new Date(o.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                  <p className="text-sm font-bold text-slate-900">{formatHTG(o.total)}</p>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    {o.payment_status === 'paid' ? 'Peye' : 'Pa peye'} · {new Date(o.created_at).toLocaleString('fr-FR')}
                   </p>
                 </div>
               );
@@ -255,7 +325,6 @@ export function CustomerHome() {
         </div>
       )}
 
-      {/* Bottom Nav */}
       <nav className="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md bg-white border-t border-slate-100 px-2 py-1.5 flex items-center justify-around z-10">
         {[
           { key: 'home', icon: Store, label: 'Akèy' },
