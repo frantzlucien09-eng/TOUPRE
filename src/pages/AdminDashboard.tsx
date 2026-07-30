@@ -20,17 +20,19 @@ import { AdminIntegrationsPage } from '@/pages/AdminIntegrationsPage';
 import { AdminPermissionsPage } from '@/pages/AdminPermissionsPage';
 import { AdminSecurityPage } from '@/pages/AdminSecurityPage';
 import { AdminCleanupPage } from '@/pages/AdminCleanupPage';
+import { AdminPaymentsPage } from '@/pages/AdminPaymentsPage';
 import { DateRangeFilter, getRangeStartDate, formatRangeLabel, type DateRangeKey } from '@/components/DateRangeFilter';
 
 type Section =
   | 'dashboard' | 'vendors' | 'kyc' | 'orders' | 'withdrawals'
-  | 'top' | 'broadcast' | 'social' | 'integrations' | 'finance'
+  | 'top' | 'broadcast' | 'social' | 'integrations' | 'finance' | 'payments'
   | 'permissions' | 'security' | 'reports' | 'cleanup' | 'activity';
 
 const NAV: { key: Section; label: string; icon: React.ReactNode }[] = [
   { key: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={15} /> },
   { key: 'kyc', label: 'KYC / Apwobasyon', icon: <BadgeCheck size={15} /> },
   { key: 'orders', label: 'Kòmand', icon: <ShoppingCart size={15} /> },
+  { key: 'payments', label: 'Peman', icon: <DollarSign size={15} /> },
   { key: 'withdrawals', label: 'Retire Lajan', icon: <Wallet size={15} /> },
   { key: 'vendors', label: 'Vandè', icon: <Users size={15} /> },
   { key: 'top', label: 'Top Vandè', icon: <Trophy size={15} /> },
@@ -264,6 +266,7 @@ export function AdminDashboard() {
           {section === 'activity' && <ActivityView recentActivity={recentActivity} onRefresh={loadActivity} />}
           {section === 'kyc' && <AdminKycPage />}
           {section === 'orders' && <AdminOrdersPage />}
+          {section === 'payments' && <AdminPaymentsPage />}
           {section === 'withdrawals' && <AdminWithdrawalsPage />}
           {section === 'vendors' && <AdminVendorsPage />}
           {section === 'social' && <AdminSocialPage />}
