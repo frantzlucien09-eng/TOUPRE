@@ -127,5 +127,14 @@ assert(
   'demo production seed SQL exists'
 );
 
+  // 11. Phase 1 customer commerce present on staging
+  assert(existsSync(join(root, 'src/lib/cart.ts')), 'cart module exists');
+  assert(existsSync(join(root, 'src/pages/CustomerCartPage.tsx')), 'CustomerCartPage exists');
+  assert(existsSync(join(root, 'src/pages/CustomerCheckoutPage.tsx')), 'CustomerCheckoutPage exists');
+  {
+    const cart = readFileSync(join(root, 'src/lib/cart.ts'), 'utf8');
+    assert(cart.includes('assertCanAddProductToCart'), 'cart blocks classified ads');
+  }
+
 console.log(failed === 0 ? '\nAll smoke checks passed.\n' : `\n${failed} smoke check(s) failed.\n`);
 process.exit(failed === 0 ? 0 : 1);

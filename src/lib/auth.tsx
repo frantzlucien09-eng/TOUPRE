@@ -64,7 +64,7 @@ async function ensureCustomerFromOAuthIntent(user: User): Promise<void> {
   const { data: existing } = await supabase
     .from('customers')
     .select('id')
-    .eq('id', user.id)
+    .or(`id.eq.${user.id},user_id.eq.${user.id}`)
     .maybeSingle();
 
   if (!existing) {
@@ -76,6 +76,7 @@ async function ensureCustomerFromOAuthIntent(user: User): Promise<void> {
 
     await supabase.from('customers').insert({
       id: user.id,
+      user_id: user.id,
       full_name: fullName,
       email: user.email ?? null,
     });
@@ -109,7 +110,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: cData, error: cError } = await supabase
         .from('customers')
         .select('*')
-        .eq('id', uid)
+        .or(`id.eq.${uid},user_id.eq.${uid}`)
+        .is('deleted_at', null)
+        .limit(1)
         .maybeSingle();
       if (cError) {
         console.error('[auth] loadCustomer error:', cError.message);
